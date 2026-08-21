@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Log Platform — Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background:#0f172a; color:#e2e8f0;
+         display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
+  .card { background:#1e293b; padding:2rem 2.5rem; border-radius:12px; width:320px; box-shadow:0 10px 30px rgba(0,0,0,.4); }
+  h1 { font-size:1.2rem; margin-bottom:1.2rem; }
+  input { width:100%; padding:.6rem; margin:.4rem 0 1rem; border-radius:6px; border:1px solid #334155;
+          background:#0f172a; color:#e2e8f0; box-sizing:border-box; }
+  button { width:100%; padding:.65rem; border:none; border-radius:6px; background:#3b82f6; color:white;
+           font-weight:600; cursor:pointer; }
+  button:hover { background:#2563eb; }
+  .error { color:#f87171; font-size:.85rem; margin-bottom:.5rem; min-height:1.2em; }
+  img.qr { display:block; margin:0 auto 1rem; background:white; padding:8px; border-radius:8px; }
+  .hint { font-size:.8rem; color:#94a3b8; margin-bottom:1rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Log Platform</h1>
+  <div class="error" id="error"></div>
+
+  <form id="login-form">
+    <input type="text" id="username" placeholder="Username" autocomplete="username" required>
+    <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
+    <button type="submit">Accedi</button>
+  </form>
+
+  <form id="mfa-form" style="display:none">
+    <img class="qr" id="qr" style="display:none">
+    <p class="hint" id="qr-hint" style="display:none">Scansiona il QR con Google Authenticator / Authy, poi inserisci il codice.</p>
+    <input type="text" id="code" placeholder="Codice a 6 cifre" inputmode="numeric" autocomplete="one-time-code" required>
+    <button type="submit">Verifica</button>
+  </form>
+</div>
+
+<script>
+const err = document.getElementById('error');
+const loginForm = document.getElementById('login-form');
+const mfaForm = document.getElementById('mfa-form');
+let currentUsername = '';
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err.textContent = '';
+  currentUsername = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+
+  const res = await fetch('/api/login', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username: currentUsername, password})
+  });
+  const data = await res.json();
+  if (!res.ok) { err.textContent = data.error || 'errore'; return; }
+
+  loginForm.style.display = 'none';
+  mfaForm.style.display = 'block';
+  if (data.mfa_setup_required) {
+    const qr = document.getElementById('qr');
+    qr.src = 'data:image/png;base64,' + data.qr_png_base64;
+    qr.style.display = 'block';
+    document.getElementById('qr-hint').style.display = 'block';
+  }
+});
+
+mfaForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err.textContent = '';
+  const code = document.getElementById('code').value;
+
+  const res = await fetch('/api/verify-mfa', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username: currentUsername, code})
+  });
+  const data = await res.json();
+  if (!res.ok) { err.textContent = data.error || 'errore'; return; }
+
+  window.location.href = '/';
+});
+</script>
+</body>
+</html>

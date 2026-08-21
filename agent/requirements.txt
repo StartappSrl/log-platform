@@ -1,0 +1,2 @@
+# L'agent usa solo la libreria standard di Python 3.10+ (ssl, socket, configparser).
+# Nessuna dipendenza esterna richiesta.

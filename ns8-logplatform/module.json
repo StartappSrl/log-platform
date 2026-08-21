@@ -1,0 +1,17 @@
+{
+  "_comment": "Scaffold non validato su NS8 reale. Verifica i campi contro la versione di NS8 in uso (schema.core-modules) prima di pubblicare.",
+  "id": "logplatform",
+  "name": "Log Platform",
+  "description": "Log management multi-tenant (Graylog) con triage allarmi via AI e accesso protetto da MFA.",
+  "version": "0.1.0",
+  "author": "generato con Claude",
+  "logo": "logo.svg",
+  "categories": ["logs", "security"],
+  "provides": {
+    "tcp_ports": [12201],
+    "http_routes": true
+  },
+  "requires": {
+    "min_ns8_version": "1.x"
+  }
+}

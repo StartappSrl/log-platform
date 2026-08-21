@@ -1,0 +1,24 @@
+# Segreti / configurazione locale — MAI committare
+.env
+
+# Materiale crittografico generato: CA, chiavi private, certificati emessi
+ca/*.pem
+ca/*.srl
+nginx/certs/*.pem
+nginx/certs/fullchain.pem
+nginx/certs/privkey.pem
+
+# Pacchetti agent generati per i clienti (contengono chiavi private!)
+dist/
+
+# Dati persistenti Docker (se mai finissero nella cartella del progetto)
+*.sql
+*.archive
+restore-tmp/
+
+# File di sistema / editor
+.DS_Store
+*.swp
+__pycache__/
+*.pyc
+node_modules/

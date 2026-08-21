@@ -1,0 +1,9 @@
+[agent]
+tenant = acme
+hostname = webserver01
+graylog_host = logs.tuodominio.it
+graylog_port = 12201
+ca_cert = ca.pem
+client_cert = acme.pem
+client_key = acme-key.pem
+log_files = /var/log/nginx/access.log, /var/log/auth.log
