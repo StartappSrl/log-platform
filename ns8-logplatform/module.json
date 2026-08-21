@@ -13,5 +13,15 @@
   },
   "requires": {
     "min_ns8_version": "1.x"
+  },
+  "images": {
+    "_comment": "Immagini costruite da .github/workflows/build-images.yml ad ogni tag v*.*.* e pubblicate su ghcr.io. Il tag immagine DEVE combaciare con il tag git di questa release: install.sh legge questo file per sapere quale versione tirare giù.",
+    "auth-service": "ghcr.io/TUO-USER/TUO-REPO/auth-service",
+    "ai-service": "ghcr.io/TUO-USER/TUO-REPO/ai-service",
+    "graylog": "docker.io/graylog/graylog:6.1",
+    "mongodb": "docker.io/mongo:6.0",
+    "opensearch": "docker.io/opensearchproject/opensearch:2.15.0",
+    "mariadb": "docker.io/mariadb:11",
+    "nginx": "docker.io/nginx:1.27-alpine"
   }
 }

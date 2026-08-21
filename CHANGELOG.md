@@ -12,6 +12,19 @@ produzione, incluso NethServer 8.
 ## [Non rilasciato]
 - (spazio per le prossime modifiche)
 
+## [0.2.0] - 2026-08-21
+### Aggiunto
+- `.github/workflows/build-images.yml`: build e pubblicazione automatica su
+  GitHub Container Registry (ghcr.io) delle immagini `auth-service` e
+  `ai-service` ad ogni tag `v*.*.*`.
+- `ns8-logplatform/module.json`: sezione `images` con i riferimenti alle
+  immagini (proprie su ghcr.io + upstream pubbliche) usate dallo scaffold.
+- `ns8-logplatform/imageroot/install.sh` e `update.sh`: ora leggono
+  `module.json` e fanno `podman pull` delle immagini indicate.
+- `deploy-ns8/README.md`: procedura per collegare il repo GitHub a NS8 per
+  installazione/aggiornamento del modulo (da verificare contro la doc NS8
+  aggiornata: comandi CLI e nomi campi non ancora validati su nodo reale).
+
 ## [0.1.0] - 2026-08-21
 ### Aggiunto
 - Stack Docker Compose iniziale a 7 servizi: mongodb, opensearch, graylog,
