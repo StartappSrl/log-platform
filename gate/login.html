@@ -50,7 +50,7 @@ loginForm.addEventListener('submit', async (e) => {
   currentUsername = document.getElementById('username').value;
   const password = document.getElementById('password').value;
 
-  const res = await fetch('/api/login', {
+  const res = await fetch('/_authgate/login', {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({username: currentUsername, password})
   });
@@ -72,7 +72,7 @@ mfaForm.addEventListener('submit', async (e) => {
   err.textContent = '';
   const code = document.getElementById('code').value;
 
-  const res = await fetch('/api/verify-mfa', {
+  const res = await fetch('/_authgate/verify-mfa', {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({username: currentUsername, code})
   });

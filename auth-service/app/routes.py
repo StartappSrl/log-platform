@@ -8,7 +8,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from .models import db, User, FailedLogin
 from .mfa import generate_secret, provisioning_qr_base64, verify_code
 
-bp = Blueprint("api", __name__, url_prefix="/api")
+bp = Blueprint("api", __name__, url_prefix="/_authgate")
 
 MAX_FAILED_ATTEMPTS = 5
 FAILED_WINDOW_MINUTES = 15
