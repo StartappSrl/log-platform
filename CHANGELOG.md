@@ -12,6 +12,23 @@ produzione, incluso NethServer 8.
 ## [Non rilasciato]
 - (spazio per le prossime modifiche)
 
+## [0.4.0] - 2026-08-21
+### Aggiunto
+- `agent/Dockerfile`: containerizza l'agent Linux per l'esecuzione su
+  Synology (Container Manager, DSM 7+) e QNAP (Container Station), che
+  supportano Docker/Compose nativamente sui modelli x86.
+- `agent/docker-compose.nas.yml.example`: esempio di deploy con volumi per
+  config e log del NAS montati in sola lettura.
+- `scripts/generate-agent.sh` genera ora anche `config-nas/` (agent.ini con
+  percorsi adattati all'esecuzione in container) dentro il pacchetto per
+  ogni tenant.
+- Guida di installazione aggiornata con la procedura Synology/QNAP.
+
+### Non incluso (deliberatamente)
+- Pacchetti nativi SPK (Synology) o QPKG (QNAP): richiedono i toolchain
+  ufficiali dei vendor, non disponibili/validabili in questo ambiente. La
+  via containerizzata copre lo stesso bisogno con molto meno rischio.
+
 ## [0.3.0] - 2026-08-21
 ### Aggiunto
 - `agent/gelf_transport.py`: modulo condiviso (connessione mTLS + formato

@@ -1,0 +1,25 @@
+# Esempio di deploy dell'agent su Synology (Container Manager > Progetto,
+# scheda "docker-compose.yml") o QNAP (Container Station > Crea > Applicazione
+# > Crea da YAML). Adatta i percorsi ai log reali del tuo NAS prima di avviare.
+#
+# Su Synology, i log di sistema tipici sono sotto /var/log e i log dei
+# pacchetti sotto /volume1/@appstore/<pacchetto>/... (varia per pacchetto).
+# Su QNAP, i log di sistema sono sotto /var/log e quelli delle app sotto
+# percorsi specifici del pacchetto (verifica in App Center / Log Center).
+#
+# NB: il container deve poter leggere quei percorsi: monta la cartella host
+# reale come sotto-cartella di /logs (sola lettura).
+
+services:
+  logplatform-agent:
+    build: .          # oppure: image: <tua-immagine-se-la-pubblichi-su-un-registry>
+    container_name: logplatform-agent
+    restart: unless-stopped
+    volumes:
+      - ./config:/config:ro
+      # Esempio: log di sistema del NAS, sola lettura
+      - /var/log:/logs/system:ro
+      # Aggiungi altre cartelle di log specifiche del NAS/pacchetto qui,
+      # es. Synology Shared Folder log, log di Docker/Container Manager, ecc.
+    # Nessuna porta da esporre: l'agent inizia SEMPRE la connessione verso
+    # Graylog (mTLS in uscita), non riceve connessioni in ingresso.
