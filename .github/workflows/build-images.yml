@@ -1,7 +1,5 @@
 name: Build e pubblica immagini (per NethServer 8)
 
-# Si attiva quando pushi un tag di versione (es. v0.2.0), coerente con lo
-# schema di versioning del progetto (CHANGELOG.md).
 on:
   push:
     tags:
@@ -33,11 +31,15 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Calcola il path immagine in minuscolo (richiesto da ghcr.io)
+        id: repo
+        run: echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
       - name: Build e push immagine ${{ matrix.service }}
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.service }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service }}:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service }}:latest
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repo }}/${{ matrix.service }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repo }}/${{ matrix.service }}:latest
