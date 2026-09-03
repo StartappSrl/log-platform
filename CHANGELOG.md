@@ -12,6 +12,31 @@ produzione, incluso NethServer 8.
 ## [Non rilasciato]
 - (spazio per le prossime modifiche)
 
+## [0.6.0] - 2026-08-21
+### Cambiato — architettura NS8 riscritta da zero su basi reali
+- Rimosso lo scaffold `ns8-logplatform/` (basato su ipotesi non verificate:
+  `module.json`, `install.sh`/`update.sh`).
+- Studiati due moduli NS8 reali (ns8-kickstart, ns8-dokuwiki) per ricavare
+  la struttura vera: script numerati in `imageroot/actions/`, metadati come
+  label sull'immagine (non un file di config), systemd unit per-container,
+  UI Vue2+Carbon, registrazione route Traefik con dominio+Let's Encrypt.
+- La piattaforma è ora divisa in **7 moduli NS8 separati** (repository
+  indipendenti in `ns8-modules/`, non incluso in questo ZIP):
+  logplatform-mongodb, -opensearch, -mariadb, -graylog, -auth, -ai, -gate.
+- Aggiunta l'immagine `gate` (nginx senza gestione TLS propria — la fa
+  Traefik centralmente — con config via envsubst) alla CI del repo
+  principale, insieme ad auth-service e ai-service.
+- Ogni modulo validato con `py_compile`/`bash -n` su tutti gli script e
+  JSON, ma **nessuno testato su un nodo NS8 reale**.
+
+### Dichiarato esplicitamente come non confermato
+- Il meccanismo di discovery tra i nostri moduli custom
+  (`resolve_agent_id` + `tasks.run('get-configuration')`) è
+  un'estrapolazione dal solo uso confermato per parlare con Traefik — mai
+  visto in un esempio reale di due moduli applicativi che si scoprono a
+  vicenda. Vedi `ns8-modules/README.md` per il piano di fallback se non
+  funziona (parametri espliciti invece di discovery automatico).
+
 ## [0.5.0] - 2026-08-21
 ### Aggiunto
 - Flusso di **conservazione a norma dei log amministratori di sistema**

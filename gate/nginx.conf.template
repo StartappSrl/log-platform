@@ -1,0 +1,65 @@
+worker_processes auto;
+
+events { worker_connections 1024; }
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    sendfile      on;
+    client_max_body_size 20m;
+
+    # AUTH_HOST/AUTH_PORT e GRAYLOG_HOST/GRAYLOG_PORT sono sostituiti da
+    # envsubst all'avvio del container (vedi container-entrypoint.sh),
+    # valorizzati dallo script di discovery verso i moduli peer
+    # ns8-logplatform-auth e ns8-logplatform-graylog.
+    upstream graylog_upstream { server ${GRAYLOG_HOST}:${GRAYLOG_PORT}; }
+    upstream auth_upstream    { server ${AUTH_HOST}:${AUTH_PORT}; }
+
+    server {
+        # Solo HTTP in chiaro: TLS pubblico è terminato dal Traefik
+        # centrale di NS8, non da questo container (a differenza del
+        # deploy standalone Docker, dove nginx gestiva anche il certificato).
+        listen 8080;
+        server_name _;
+
+        location = /login.html {
+            root /usr/share/nginx/html;
+        }
+
+        location /api/ {
+            proxy_pass http://auth_upstream/api/;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Host $host;
+        }
+
+        location = /auth-check-internal {
+            internal;
+            proxy_pass http://auth_upstream/api/auth_check;
+            proxy_pass_request_body off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location / {
+            auth_request /auth-check-internal;
+            error_page 401 = @login_redirect;
+
+            auth_request_set $auth_user $upstream_http_x_auth_user;
+            proxy_set_header X-Auth-User $auth_user;
+
+            proxy_pass http://graylog_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        location @login_redirect {
+            return 302 /login.html;
+        }
+    }
+}

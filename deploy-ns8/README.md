@@ -61,84 +61,22 @@ questo progetto. Prima di usarlo in produzione:
 
 ## Collegare il repo GitHub a NS8 per install/aggiornamenti
 
-Questo è il pezzo che rende gli aggiornamenti gestibili da NS8 invece che
-manuali. Il meccanismo (verificalo contro la documentazione ufficiale NS8
-aggiornata prima di usarlo in produzione — i comandi esatti possono variare
-tra versioni):
+**AGGIORNAMENTO**: questa sezione descriveva uno scaffold di modulo NS8
+singolo (`ns8-logplatform/`, rimosso da questo repo) basato su ipotesi non
+verificate (`module.json`, `install.sh`/`update.sh`). Studiando due moduli
+NS8 reali (ns8-kickstart e ns8-dokuwiki) è emerso che la struttura è
+diversa: niente `module.json`, script numerati in `imageroot/actions/`,
+metadati come label sull'immagine. La piattaforma è stata quindi divisa in
+**7 moduli NS8 separati** (uno per servizio), ciascuno nel proprio
+repository GitHub, in una cartella a parte: `ns8-modules/` (non incluso in
+questo ZIP — repository indipendenti, uno per modulo).
 
-### 1. Prepara il repository GitHub
-
-- Usa lo stesso repo già configurato (con `git remote add origin ...`), oppure
-  crea un repo dedicato solo per `ns8-logplatform/` se preferisci tenerlo
-  separato dal resto dello stack.
-- `.github/workflows/build-images.yml` (già incluso) builda e pubblica su
-  **GitHub Container Registry** (`ghcr.io`) le immagini di `auth-service` e
-  `ai-service` ogni volta che pushi un tag `v*.*.*` — lo stesso tag che usi
-  per il CHANGELOG.
-- Le altre immagini (graylog, mongodb, opensearch, mariadb, nginx) sono
-  pubbliche upstream: non serve costruirle, basta referenziarle in
-  `module.json` → `images`.
-
-### 2. Rendi pubbliche (o autorizzate) le immagini ghcr.io
-
-Dopo il primo push di un tag, su GitHub vai in **Packages** (della tua
-organizzazione/utente) e imposta la visibilità dei package `auth-service`
-e `ai-service` su **Public**, oppure configura un pull secret su NS8 se
-preferisci tenerle private (dettaglio da verificare con la doc NS8 corrente
-su come passare credenziali registry ai moduli).
-
-### 3. Sostituisci i placeholder in `module.json`
-
-In `ns8-logplatform/module.json`, sotto `"images"`, sostituisci
-`ghcr.io/TUO-USER/TUO-REPO/...` con il path reale del tuo repository
-GitHub (minuscolo, come richiesto da ghcr.io).
-
-### 4. Installazione iniziale su un nodo NS8
-
-Dal Cluster Admin di NS8 (UI "Software Center" → "Installa da URL", oppure
-da CLI se disponibile sul tuo nodo):
-
-```bash
-# Sintassi indicativa - verifica il comando esatto della tua versione NS8
-add-module https://github.com/TUO-USER/TUO-REPO v0.1.0
-```
-
-NS8 scarica il tarball del tag indicato, esegue `imageroot/install.sh`
-(vedi sopra) che a sua volta legge `module.json` e tira giù le immagini
-elencate.
-
-### 5. Aggiornamento a una nuova versione
-
-Flusso ricorrente, una volta che hai una nuova versione pronta:
-
-```bash
-# in locale, nel repo del progetto
-git tag -a v0.2.0 -m "descrizione della release"
-git push origin v0.2.0
-# la Action builda e pubblica le nuove immagini auth-service/ai-service su ghcr.io
-```
-
-Poi, sul nodo NS8:
-
-```bash
-# Sintassi indicativa - verifica il comando esatto (potrebbe essere
-# "update-module", un'azione dalla UI, o api-cli specifico)
-update-module logplatform v0.2.0
-```
-
-Questo dovrebbe eseguire `imageroot/update.sh` (che nello scaffold fa un
-backup e riavvia i container con le nuove immagini) **senza perdere i dati**
-persistenti (volumi sotto `/home/logplatform/`, gestiti da NS8).
-
-### Nota sulla verifica
-
-I nomi esatti dei comandi (`add-module`, `update-module`), la posizione
-del riferimento alle immagini dentro `module.json` (`images` potrebbe non
-essere il campo giusto per la tua versione di NS8) e il meccanismo di
-credenziali per registry privati sono i punti più a rischio di essere
-cambiati o leggermente diversi da quanto scritto qui. Prima di affidarti a
-questo flusso in produzione, confronta con la documentazione ufficiale
-aggiornata di NethServer 8 sullo sviluppo/distribuzione moduli.
+Vedi `ns8-modules/README.md` per: l'ordine di installazione (le dipendenze
+tra moduli contano), cosa è confermato contro i repo reali e cosa è
+un'estrapolazione da validare (in particolare: il meccanismo con cui i
+nostri moduli si scoprono a vicenda, mai visto in un esempio reale
+multi-container), e i comandi di esempio per installare/configurare tutti
+e 7 i moduli in sequenza su un nodo di test.
 
 ## Cosa resta genuinamente da fare per un modulo NS8 completo
 

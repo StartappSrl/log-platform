@@ -18,7 +18,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        service: [auth-service, ai-service]
+        service: [auth-service, ai-service, gate]
     steps:
       - uses: actions/checkout@v4
 
