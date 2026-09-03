@@ -12,7 +12,9 @@
 #     qualunque viene alterato a posteriori, la catena si rompe e si vede.
 #  4. Se configurata una TSA (Time Stamping Authority, RFC 3161), chiede una
 #     marca temporale sull'hash della catena: prova indipendente, verificabile
-#     da terzi, che quell'hash esisteva già a quella data.
+#     da terzi, che quell'hash esisteva già a quella data. Supporta TSA con
+#     autenticazione Basic Auth o certificato client (es. Namirial e altri
+#     fornitori qualificati eIDAS a pagamento), configurabile in .env.
 #  5. Rende i file immutabili a livello filesystem (chattr +i, se disponibile).
 #
 # LIMITE ONESTO: chattr +i può essere rimosso da chi ha accesso root alla
@@ -37,6 +39,10 @@ TARGET_DATE="${2:-$(date -d 'yesterday' +%Y.%m.%d 2>/dev/null || date -v-1d +%Y.
 OPENSEARCH_URL="${OPENSEARCH_URL:-http://localhost:9200}"
 SEAL_DIR="${ADMIN_LOG_SEAL_DIR:-/mnt/graylog-data/admin-log-seals}/${TENANT}"
 TSA_URL="${ADMIN_LOG_TSA_URL:-https://freetsa.org/tsr}"
+TSA_USER="${ADMIN_LOG_TSA_USER:-}"
+TSA_PASSWORD="${ADMIN_LOG_TSA_PASSWORD:-}"
+TSA_CLIENT_CERT="${ADMIN_LOG_TSA_CLIENT_CERT:-}"
+TSA_CLIENT_KEY="${ADMIN_LOG_TSA_CLIENT_KEY:-}"
 INDEX_PATTERN="tenant-${TENANT}-admin-access_*"
 
 mkdir -p "$SEAL_DIR"
@@ -73,8 +79,12 @@ if command -v openssl >/dev/null && [[ -n "$TSA_URL" ]]; then
   TSR_FILE="${SEAL_DIR}/${TARGET_DATE}.tsr"
   openssl ts -query -digest "$CHAIN_HASH" -sha256 -no_nonce -out "$TSQ_FILE" 2>/dev/null || true
   if [[ -f "$TSQ_FILE" ]]; then
-    curl -sf -H "Content-Type: application/timestamp-query" --data-binary "@${TSQ_FILE}" "$TSA_URL" \
-      -o "$TSR_FILE" 2>/dev/null || echo "ATTENZIONE: marca temporale non ottenuta (TSA non raggiungibile?)." >&2
+    CURL_AUTH_ARGS=()
+    [[ -n "$TSA_USER" ]] && CURL_AUTH_ARGS+=(-u "${TSA_USER}:${TSA_PASSWORD}")
+    [[ -n "$TSA_CLIENT_CERT" ]] && CURL_AUTH_ARGS+=(--cert "$TSA_CLIENT_CERT")
+    [[ -n "$TSA_CLIENT_KEY" ]] && CURL_AUTH_ARGS+=(--key "$TSA_CLIENT_KEY")
+    curl -sf "${CURL_AUTH_ARGS[@]}" -H "Content-Type: application/timestamp-query" --data-binary "@${TSQ_FILE}" "$TSA_URL" \
+      -o "$TSR_FILE" 2>/dev/null || echo "ATTENZIONE: marca temporale non ottenuta (TSA non raggiungibile, credenziali errate, o URL sbagliato?)." >&2
   fi
 fi
 

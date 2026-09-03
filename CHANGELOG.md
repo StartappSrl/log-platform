@@ -12,6 +12,23 @@ produzione, incluso NethServer 8.
 ## [Non rilasciato]
 - (spazio per le prossime modifiche)
 
+## [0.7.0] - 2026-08-21
+### Aggiunto
+- `scripts/seal-admin-logs.sh`: supporto per TSA (marca temporale RFC 3161)
+  con autenticazione — Basic Auth (`ADMIN_LOG_TSA_USER`/`ADMIN_LOG_TSA_PASSWORD`)
+  o certificato client (`ADMIN_LOG_TSA_CLIENT_CERT`/`ADMIN_LOG_TSA_CLIENT_KEY`),
+  necessario per fornitori qualificati eIDAS a pagamento come **Namirial**
+  (finora supportata solo la TSA gratuita `freetsa.org`, senza autenticazione).
+- `.env.example`: nuovi campi per la configurazione TSA, con fallback
+  automatico alla TSA gratuita se lasciati vuoti (il meccanismo di hash
+  chain resta operativo anche prima di avere le credenziali Namirial).
+- Guida di installazione e documento tecnico ISO 27001 aggiornati.
+
+### Da fare (bloccato in attesa di dati esterni)
+- Endpoint RFC 3161 e metodo di autenticazione esatti di Namirial non
+  ancora noti/configurati: l'utente deve recuperarli dal supporto/contratto
+  Namirial in fase di attivazione del servizio.
+
 ## [0.6.0] - 2026-08-21
 ### Cambiato — architettura NS8 riscritta da zero su basi reali
 - Rimosso lo scaffold `ns8-logplatform/` (basato su ipotesi non verificate:
