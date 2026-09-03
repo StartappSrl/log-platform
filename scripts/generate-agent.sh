@@ -27,6 +27,10 @@ rm -f "$OUT_DIR/${TENANT}.csr"
 
 cp ca/ca.pem "$OUT_DIR/ca.pem"
 cp agent/agent.py "$OUT_DIR/agent.py"
+cp agent/agent_windows.py "$OUT_DIR/agent_windows.py"
+cp agent/gelf_transport.py "$OUT_DIR/gelf_transport.py"
+cp agent/requirements-windows.txt "$OUT_DIR/requirements-windows.txt"
+cp agent/logplatform-agent.service.example "$OUT_DIR/logplatform-agent.service.example"
 
 cat > "$OUT_DIR/agent.ini" <<EOF
 [agent]
@@ -38,12 +42,23 @@ ca_cert = ca.pem
 client_cert = ${TENANT}.pem
 client_key = ${TENANT}-key.pem
 log_files = /var/log/syslog
+# event_logs = Application, System   # solo Windows, vedi agent_windows.py
 EOF
 
 TARBALL="dist/agent-${TENANT}.tar.gz"
 tar -C dist -czf "$TARBALL" "agent-${TENANT}"
 
 echo "Pacchetto pronto: ${TARBALL}"
-echo "Contiene: agent.py, agent.ini (da rifinire), certificato client, CA."
-echo "Sull'endpoint del cliente: estrai, modifica agent.ini (hostname, log_files), poi:"
-echo "  python3 agent.py --config agent.ini"
+echo "Contiene: agent.py (Linux) + agent_windows.py (Windows) + gelf_transport.py,"
+echo "agent.ini (da rifinire), certificato client, CA, unit systemd di esempio."
+echo
+echo "--- Linux ---"
+echo "  cd agent-${TENANT} && python3 agent.py --config agent.ini     (test manuale)"
+echo "  Poi per farlo girare come servizio: adatta e installa"
+echo "  logplatform-agent.service.example in /etc/systemd/system/"
+echo
+echo "--- Windows (da prompt Amministratore) ---"
+echo "  pip install -r requirements-windows.txt"
+echo "  python agent_windows.py debug      (test in primo piano)"
+echo "  python agent_windows.py install"
+echo "  python agent_windows.py start"

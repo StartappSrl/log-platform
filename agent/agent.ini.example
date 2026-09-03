@@ -7,3 +7,9 @@ ca_cert = ca.pem
 client_cert = acme.pem
 client_key = acme-key.pem
 log_files = /var/log/nginx/access.log, /var/log/auth.log
+
+# --- Solo per agent_windows.py (Windows) ---
+# Canali Event Log da monitorare, separati da virgola. Lascia vuoto o
+# rimuovi la riga se ti interessano solo file di log (es. IIS).
+# event_logs = Application, System
+

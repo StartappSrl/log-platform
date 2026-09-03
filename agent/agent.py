@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agent per l'invio di log al server Graylog via GELF TCP + TLS mutuo (mTLS).
+Agent Linux per l'invio di log al server Graylog via GELF TCP + TLS mutuo (mTLS).
 
 Configurazione: agent.ini nella stessa cartella (vedi agent.ini.example).
 Ogni messaggio include il campo "tenant" con l'identificativo del cliente,
@@ -9,40 +9,18 @@ tenant corretto (vedi scripts/provision-tenant.sh).
 
 Uso tipico: seguire (tail -f) uno o più file di log e inoltrarli.
     python3 agent.py --config agent.ini
+
+Per installarlo come servizio persistente, vedi logplatform-agent.service.example.
+Per Windows, usa agent_windows.py invece di questo script.
 """
 import argparse
 import configparser
-import json
 import socket
-import ssl
+import threading
 import time
 from pathlib import Path
 
-
-def build_gelf_message(tenant: str, host: str, short_message: str, full_message: str = "",
-                        level: int = 6, extra: dict | None = None) -> bytes:
-    msg = {
-        "version": "1.1",
-        "host": host,
-        "short_message": short_message[:1000],
-        "full_message": full_message or short_message,
-        "timestamp": time.time(),
-        "level": level,
-        "_tenant": tenant,
-    }
-    if extra:
-        for k, v in extra.items():
-            msg[f"_{k}"] = v
-    # GELF su TCP richiede il byte NUL come delimitatore di fine messaggio
-    return json.dumps(msg).encode("utf-8") + b"\x00"
-
-
-def connect(host: str, port: int, ca_cert: str, client_cert: str, client_key: str) -> ssl.SSLSocket:
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.load_verify_locations(ca_cert)
-    context.load_cert_chain(certfile=client_cert, keyfile=client_key)
-    raw_sock = socket.create_connection((host, port), timeout=10)
-    return context.wrap_socket(raw_sock, server_hostname=host)
+from gelf_transport import build_gelf_message, connect
 
 
 def tail_file(path: Path):
@@ -54,6 +32,19 @@ def tail_file(path: Path):
                 time.sleep(0.5)
                 continue
             yield line.rstrip("\n")
+
+
+def follow(path_str: str, tenant: str, hostname: str, connect_args: tuple, sock_holder: dict):
+    path = Path(path_str)
+    for line in tail_file(path):
+        payload = build_gelf_message(tenant, hostname, line, extra={"source_file": str(path)})
+        while True:
+            try:
+                sock_holder["sock"].sendall(payload)
+                break
+            except (BrokenPipeError, OSError):
+                time.sleep(2)
+                sock_holder["sock"] = connect(*connect_args)
 
 
 def main():
@@ -77,24 +68,13 @@ def main():
     if not log_files:
         raise SystemExit("Configura almeno un file in 'log_files' nell'agent.ini")
 
-    sock = connect(graylog_host, graylog_port, ca_cert, client_cert, client_key)
+    connect_args = (graylog_host, graylog_port, ca_cert, client_cert, client_key)
+    sock_holder = {"sock": connect(*connect_args)}
 
-    import threading
-
-    def follow(path_str):
-        nonlocal sock
-        path = Path(path_str)
-        for line in tail_file(path):
-            payload = build_gelf_message(tenant, hostname, line, extra={"source_file": str(path)})
-            while True:
-                try:
-                    sock.sendall(payload)
-                    break
-                except (BrokenPipeError, OSError):
-                    time.sleep(2)
-                    sock = connect(graylog_host, graylog_port, ca_cert, client_cert, client_key)
-
-    threads = [threading.Thread(target=follow, args=(p,), daemon=True) for p in log_files]
+    threads = [
+        threading.Thread(target=follow, args=(p, tenant, hostname, connect_args, sock_holder), daemon=True)
+        for p in log_files
+    ]
     for t in threads:
         t.start()
     for t in threads:

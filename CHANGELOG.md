@@ -12,6 +12,23 @@ produzione, incluso NethServer 8.
 ## [Non rilasciato]
 - (spazio per le prossime modifiche)
 
+## [0.3.0] - 2026-08-21
+### Aggiunto
+- `agent/gelf_transport.py`: modulo condiviso (connessione mTLS + formato
+  GELF) usato ora sia dall'agent Linux sia da quello Windows.
+- `agent/agent_windows.py`: agent per Windows, installabile come **servizio
+  Windows nativo** (via pywin32, senza tool esterni tipo NSSM). Legge sia
+  file di log testuali sia canali dell'Event Log di Windows (Application,
+  System, ecc.), con stato persistito in `agent_state.json` per non
+  reinviare eventi già spediti dopo un riavvio del servizio.
+- `agent/logplatform-agent.service.example`: unit systemd per far girare
+  l'agent Linux come servizio persistente.
+- `agent/requirements-windows.txt`: dipendenza `pywin32` per l'agent Windows.
+- `scripts/generate-agent.sh` ora include nel pacchetto per il cliente sia
+  l'agent Linux sia quello Windows, con istruzioni per entrambi.
+- Guida di installazione aggiornata con le sezioni "systemd" (Linux) e
+  "servizio Windows nativo".
+
 ## [0.2.0] - 2026-08-21
 ### Aggiunto
 - `.github/workflows/build-images.yml`: build e pubblicazione automatica su
