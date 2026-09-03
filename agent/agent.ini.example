@@ -8,8 +8,19 @@ client_cert = acme.pem
 client_key = acme-key.pem
 log_files = /var/log/nginx/access.log, /var/log/auth.log
 
+# Log di accesso degli AMMINISTRATORI DI SISTEMA (login, sudo, ecc.):
+# vengono taggati automaticamente log_class=admin-access e possono finire
+# in uno stream a conservazione lunga per la conformità al Provvedimento
+# Garante Privacy 27/11/2008. Se lasci /var/log/auth.log solo qui sopra in
+# log_files, NON viene marcato come admin-access: mettilo (anche) qui.
+admin_log_files = /var/log/auth.log
+
 # --- Solo per agent_windows.py (Windows) ---
 # Canali Event Log da monitorare, separati da virgola. Lascia vuoto o
 # rimuovi la riga se ti interessano solo file di log (es. IIS).
 # event_logs = Application, System
+#
+# Canale "Security" per gli accessi (logon/logoff, Event ID 4624/4625/4672):
+# taggato automaticamente log_class=admin-access.
+# admin_event_logs = Security
 

@@ -12,6 +12,36 @@ produzione, incluso NethServer 8.
 ## [Non rilasciato]
 - (spazio per le prossime modifiche)
 
+## [0.5.0] - 2026-08-21
+### Aggiunto
+- Flusso di **conservazione a norma dei log amministratori di sistema**
+  (Provvedimento Garante Privacy 27/11/2008): retention ≥ 6 mesi,
+  completezza monitorabile, integrità verificabile.
+- `agent.ini`: nuove chiavi `admin_log_files` / `admin_event_logs` per
+  taggare i log di accesso amministrativo (`log_class=admin-access`),
+  distinti dai log generici. Supportato sia da `agent.py` (Linux) sia da
+  `agent_windows.py`.
+- `scripts/provision-admin-log-stream.sh`: stream + index set dedicati per
+  tenant, retention configurabile (default 200 giorni).
+- `scripts/seal-admin-logs.sh`: sigillo giornaliero via hash chain SHA-256
+  + marca temporale RFC 3161 opzionale (TSA esterna), immutabilità
+  filesystem best-effort (`chattr +i`).
+- `scripts/verify-admin-log-seal.sh`: verifica la catena di sigilli e
+  segnala manomissioni o buchi — testata con simulazione locale (catena
+  integra riconosciuta, manomissione rilevata correttamente).
+- Guida di installazione: nuova sezione 13 con la procedura completa.
+- Documento tecnico ISO 27001: nuova sezione dedicata al Provvedimento
+  Garante Amministratori di Sistema.
+- Template politiche organizzative: tabella per l'elenco nominativo degli
+  amministratori di sistema con riesame annuale (richiesto dalla norma).
+
+### Limiti noti
+- `chattr +i` non è WORM hardware: un root compromesso può rimuoverlo. La
+  robustezza reale viene dalla combinazione con la marca temporale esterna.
+- TSA di default (`freetsa.org`) è gratuita e best-effort: per un valore
+  probatorio più solido in contesti ad alto rischio, valutare una TSA
+  qualificata a pagamento.
+
 ## [0.4.0] - 2026-08-21
 ### Aggiunto
 - `agent/Dockerfile`: containerizza l'agent Linux per l'esecuzione su

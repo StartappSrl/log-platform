@@ -68,10 +68,13 @@ def tail_file(path: Path, stop_flag: dict):
 
 
 def follow_file(path_str: str, tenant: str, hostname: str, connect_args: tuple,
-                 sock_holder: dict, stop_flag: dict):
+                 sock_holder: dict, stop_flag: dict, log_class: str | None = None):
     path = Path(path_str)
+    extra_base = {"source_file": str(path)}
+    if log_class:
+        extra_base["log_class"] = log_class
     for line in tail_file(path, stop_flag):
-        payload = build_gelf_message(tenant, hostname, line, extra={"source_file": str(path)})
+        payload = build_gelf_message(tenant, hostname, line, extra=extra_base)
         while True:
             try:
                 sock_holder["sock"].sendall(payload)
@@ -84,7 +87,7 @@ def follow_file(path_str: str, tenant: str, hostname: str, connect_args: tuple,
 
 
 def follow_event_log(channel: str, tenant: str, hostname: str, connect_args: tuple,
-                      sock_holder: dict, stop_flag: dict, state: dict):
+                      sock_holder: dict, stop_flag: dict, state: dict, log_class: str | None = None):
     """Legge in polling i nuovi eventi di un canale Event Log (Application,
     System, Security, ...) e li inoltra come messaggi GELF. Tiene traccia
     dell'ultimo record letto in agent_state.json per non reinviare tutto
@@ -117,15 +120,19 @@ def follow_event_log(channel: str, tenant: str, hostname: str, connect_args: tup
                 except Exception:
                     message = f"EventID {ev.EventID}"
 
+                extra = {
+                    "event_channel": channel,
+                    "event_id": ev.EventID & 0xFFFF,
+                    "event_source": ev.SourceName,
+                    "event_record_number": ev.RecordNumber,
+                }
+                if log_class:
+                    extra["log_class"] = log_class
+
                 payload = build_gelf_message(
                     tenant, hostname, message,
                     level=level_map.get(ev.EventType, 6),
-                    extra={
-                        "event_channel": channel,
-                        "event_id": ev.EventID & 0xFFFF,
-                        "event_source": ev.SourceName,
-                        "event_record_number": ev.RecordNumber,
-                    },
+                    extra=extra,
                 )
                 while True:
                     try:
@@ -166,6 +173,11 @@ def load_config(config_path: Path):
         "client_key": str(SCRIPT_DIR / s["client_key"]),
         "log_files": [p.strip() for p in s.get("log_files", "").split(",") if p.strip()],
         "event_logs": [c.strip() for c in s.get("event_logs", "").split(",") if c.strip()],
+        "admin_log_files": [p.strip() for p in s.get("admin_log_files", "").split(",") if p.strip()],
+        # Canali Event Log da taggare come log_class=admin-access (tipicamente "Security",
+        # dove Windows registra i logon: Event ID 4624/4625/4672). Vedi
+        # scripts/provision-admin-log-stream.sh e seal-admin-logs.sh.
+        "admin_event_logs": [c.strip() for c in s.get("admin_event_logs", "").split(",") if c.strip()],
     }
 
 
@@ -182,14 +194,24 @@ def run_agent(stop_flag: dict):
             target=follow_file,
             args=(p, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag),
             daemon=True))
+    for p in config["admin_log_files"]:
+        threads.append(threading.Thread(
+            target=follow_file,
+            args=(p, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, "admin-access"),
+            daemon=True))
     for channel in config["event_logs"]:
         threads.append(threading.Thread(
             target=follow_event_log,
-            args=(channel, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, state),
+            args=(channel, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, state, None),
+            daemon=True))
+    for channel in config["admin_event_logs"]:
+        threads.append(threading.Thread(
+            target=follow_event_log,
+            args=(channel, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, state, "admin-access"),
             daemon=True))
 
     if not threads:
-        raise SystemExit("Configura almeno 'log_files' o 'event_logs' in agent.ini")
+        raise SystemExit("Configura almeno 'log_files', 'admin_log_files', 'event_logs' o 'admin_event_logs' in agent.ini")
 
     for t in threads:
         t.start()
