@@ -3,10 +3,10 @@ from datetime import datetime, timedelta
 
 import bcrypt
 from flask import Blueprint, current_app, jsonify, request, make_response
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from .models import db, User, FailedLogin
 from .mfa import generate_secret, provisioning_qr_base64, verify_code
+from .auth_utils import get_serializer, get_current_user
 
 bp = Blueprint("api", __name__, url_prefix="/_authgate")
 
@@ -14,12 +14,8 @@ MAX_FAILED_ATTEMPTS = 5
 FAILED_WINDOW_MINUTES = 15
 
 
-def _serializer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(current_app.config["AUTH_SECRET_KEY"], salt="session")
-
-
 def _set_session_cookie(resp, username: str):
-    token = _serializer().dumps({"u": username})
+    token = get_serializer().dumps({"u": username})
     max_age = int(current_app.config["SESSION_LIFETIME_MINUTES"]) * 60
     resp.set_cookie(
         current_app.config["SESSION_COOKIE_NAME"],
@@ -91,18 +87,7 @@ def verify_mfa():
 @bp.get("/auth_check")
 def auth_check():
     """Usato da nginx (auth_request) per validare la sessione."""
-    cookie_name = current_app.config["SESSION_COOKIE_NAME"]
-    token = request.cookies.get(cookie_name)
-    if not token:
-        return "", 401
-
-    max_age = int(current_app.config["SESSION_LIFETIME_MINUTES"]) * 60
-    try:
-        data = _serializer().loads(token, max_age=max_age)
-    except (BadSignature, SignatureExpired):
-        return "", 401
-
-    user = User.query.filter_by(username=data.get("u"), is_active=True).first()
+    user = get_current_user()
     if not user:
         return "", 401
 

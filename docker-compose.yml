@@ -46,6 +46,16 @@ services:
       - GRAYLOG_HTTP_EXTERNAL_URI=${GRAYLOG_HTTP_EXTERNAL_URI}
       - GRAYLOG_MONGODB_URI=mongodb://mongodb:27017/graylog
       - GRAYLOG_ELASTICSEARCH_HOSTS=http://opensearch:9200
+      # SMTP per le notifiche email create dal pannello (facoltativo: lascia
+      # vuoto GRAYLOG_TRANSPORT_EMAIL_HOSTNAME se non ti serve l'invio email)
+      - GRAYLOG_TRANSPORT_EMAIL_ENABLED=${GRAYLOG_SMTP_ENABLED:-false}
+      - GRAYLOG_TRANSPORT_EMAIL_HOSTNAME=${GRAYLOG_SMTP_HOST:-}
+      - GRAYLOG_TRANSPORT_EMAIL_PORT=${GRAYLOG_SMTP_PORT:-587}
+      - GRAYLOG_TRANSPORT_EMAIL_USE_AUTH=${GRAYLOG_SMTP_USE_AUTH:-true}
+      - GRAYLOG_TRANSPORT_EMAIL_AUTH_USERNAME=${GRAYLOG_SMTP_USER:-}
+      - GRAYLOG_TRANSPORT_EMAIL_AUTH_PASSWORD=${GRAYLOG_SMTP_PASSWORD:-}
+      - GRAYLOG_TRANSPORT_EMAIL_USE_TLS=${GRAYLOG_SMTP_USE_TLS:-true}
+      - GRAYLOG_TRANSPORT_EMAIL_FROM_EMAIL=${GRAYLOG_ALERT_EMAIL_FROM:-alerts@logplatform.local}
     networks: [backend]
     volumes:
       - graylog_data:/usr/share/graylog/data
@@ -72,13 +82,16 @@ services:
   auth-service:
     build: ./auth-service
     restart: unless-stopped
-    depends_on: [mariadb]
+    depends_on: [mariadb, graylog]
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - AUTH_SECRET_KEY=${AUTH_SECRET_KEY}
       - SESSION_COOKIE_NAME=${SESSION_COOKIE_NAME}
       - SESSION_LIFETIME_MINUTES=${SESSION_LIFETIME_MINUTES}
       - PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+      - GRAYLOG_URL=http://graylog:9000
+      - GRAYLOG_API_USER=${GRAYLOG_API_USER}
+      - GRAYLOG_API_PASSWORD=${GRAYLOG_API_PASSWORD}
     networks: [backend, frontend]
 
   ai-service:

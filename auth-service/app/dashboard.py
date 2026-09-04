@@ -1,0 +1,197 @@
+"""
+Pannello semplificato: gestione clienti/tenant, ricerca log, allarmi,
+notifiche — senza passare dalla UI nativa di Graylog. Ogni rotta applica
+automaticamente lo scoping per tenant: un utente non-admin (tenant != None)
+vede e agisce SOLO sul proprio tenant.
+"""
+from functools import wraps
+
+from flask import Blueprint, jsonify, request, g
+
+from .models import db, Tenant, User
+from .auth_utils import get_current_user
+from . import graylog_client as gl
+
+dash = Blueprint("dashboard", __name__, url_prefix="/_authgate/dashboard")
+
+
+def login_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            return jsonify(error="non autenticato"), 401
+        g.current_user = user
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def admin_required(fn):
+    @wraps(fn)
+    @login_required
+    def wrapper(*args, **kwargs):
+        if g.current_user.tenant:  # un utente con tenant impostato non è admin globale
+            return jsonify(error="richiede accesso amministratore"), 403
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def _tenant_or_403(tenant_name: str):
+    """Un utente tenant può operare solo sul proprio; l'admin su qualunque."""
+    if g.current_user.tenant and g.current_user.tenant != tenant_name:
+        return None
+    return Tenant.query.filter_by(name=tenant_name).first()
+
+
+@dash.get("/whoami")
+@login_required
+def whoami():
+    return jsonify(username=g.current_user.username, tenant=g.current_user.tenant,
+                    is_admin=not g.current_user.tenant)
+
+
+# --- Gestione clienti/tenant (solo admin) ---
+
+@dash.get("/tenants")
+@admin_required
+def list_tenants():
+    tenants = Tenant.query.order_by(Tenant.name).all()
+    return jsonify([{"name": t.name, "display_name": t.display_name,
+                      "stream_id": t.graylog_stream_id} for t in tenants])
+
+
+@dash.post("/tenants")
+@admin_required
+def create_tenant_route():
+    data = request.get_json(force=True, silent=True) or {}
+    name = (data.get("name") or "").strip().lower()
+    display_name = data.get("display_name") or name
+    retention_days = int(data.get("retention_days") or 90)
+
+    if not name or not name.replace("-", "").isalnum():
+        return jsonify(error="nome tenant non valido (solo lettere, numeri, trattini)"), 400
+    if Tenant.query.filter_by(name=name).first():
+        return jsonify(error="tenant già esistente"), 409
+
+    try:
+        result = gl.create_tenant_stream(name, retention_days=retention_days)
+    except gl.GraylogError as e:
+        return jsonify(error=f"errore Graylog: {e}"), 502
+
+    t = Tenant(name=name, display_name=display_name,
+               graylog_stream_id=result["stream_id"], graylog_index_set_id=result["index_set_id"])
+    db.session.add(t)
+    db.session.commit()
+    return jsonify(name=t.name, display_name=t.display_name, stream_id=t.graylog_stream_id), 201
+
+
+# --- Ricerca log ---
+
+@dash.get("/search")
+@login_required
+def search_route():
+    tenant_name = request.args.get("tenant") or g.current_user.tenant
+    if not tenant_name:
+        return jsonify(error="specifica un tenant (parametro 'tenant')"), 400
+
+    t = _tenant_or_403(tenant_name)
+    if not t:
+        return jsonify(error="tenant non trovato o non autorizzato"), 403
+
+    query = request.args.get("q", "*")
+    range_minutes = int(request.args.get("range_minutes", 60))
+    limit = min(int(request.args.get("limit", 150)), 500)
+
+    try:
+        result = gl.search(t.graylog_stream_id, query=query, range_minutes=range_minutes, limit=limit)
+    except gl.GraylogError as e:
+        return jsonify(error=f"errore Graylog: {e}"), 502
+
+    messages = [m["message"] for m in result.get("messages", [])]
+    return jsonify(total=result.get("total_results", len(messages)), messages=messages)
+
+
+# --- Allarmi ---
+
+@dash.get("/alarms")
+@login_required
+def list_alarms_route():
+    tenant_name = request.args.get("tenant") or g.current_user.tenant
+    if not tenant_name:
+        return jsonify(error="specifica un tenant"), 400
+    t = _tenant_or_403(tenant_name)
+    if not t:
+        return jsonify(error="tenant non trovato o non autorizzato"), 403
+
+    try:
+        alarms = gl.list_event_definitions(stream_id=t.graylog_stream_id)
+    except gl.GraylogError as e:
+        return jsonify(error=f"errore Graylog: {e}"), 502
+    return jsonify(alarms)
+
+
+@dash.post("/alarms")
+@login_required
+def create_alarm_route():
+    data = request.get_json(force=True, silent=True) or {}
+    tenant_name = data.get("tenant") or g.current_user.tenant
+    t = _tenant_or_403(tenant_name)
+    if not t:
+        return jsonify(error="tenant non trovato o non autorizzato"), 403
+
+    title = data.get("title")
+    query = data.get("query", "")
+    threshold = int(data.get("threshold", 1))
+    window_minutes = int(data.get("window_minutes", 5))
+    notification_ids = data.get("notification_ids", [])
+
+    if not title:
+        return jsonify(error="titolo mancante"), 400
+
+    try:
+        result = gl.create_alert(title, t.graylog_stream_id, query, threshold, window_minutes, notification_ids)
+    except gl.GraylogError as e:
+        return jsonify(error=f"errore Graylog: {e}"), 502
+    return jsonify(result), 201
+
+
+# --- Notifiche (email/webhook) ---
+# Nota: le notifiche create qui sono globali lato Graylog (non hanno un
+# concetto nativo di tenant); le associ a un allarme specifico quando crei
+# l'allarme (notification_ids). Un utente tenant può crearne di nuove ma
+# non vede quelle create da altri tenant/dall'admin.
+
+@dash.get("/notifications")
+@login_required
+def list_notifications_route():
+    try:
+        notifications = gl.list_notifications()
+    except gl.GraylogError as e:
+        return jsonify(error=f"errore Graylog: {e}"), 502
+    # Filtro basico per non-admin: mostra solo quelle il cui titolo inizia
+    # con il nome del tenant (convenzione applicata in create_notification_route).
+    if g.current_user.tenant:
+        notifications = [n for n in notifications if n.get("title", "").startswith(f"[{g.current_user.tenant}]")]
+    return jsonify(notifications)
+
+
+@dash.post("/notifications")
+@login_required
+def create_notification_route():
+    data = request.get_json(force=True, silent=True) or {}
+    tenant_name = data.get("tenant") or g.current_user.tenant
+    if g.current_user.tenant and g.current_user.tenant != tenant_name:
+        return jsonify(error="non autorizzato per questo tenant"), 403
+
+    kind = data.get("kind")  # 'email' o 'webhook'
+    target = data.get("target")
+    title_suffix = data.get("title", kind)
+    if kind not in ("email", "webhook") or not target:
+        return jsonify(error="parametri mancanti: kind ('email'/'webhook') e target"), 400
+
+    title = f"[{tenant_name}] {title_suffix}"
+    try:
+        result = gl.create_notification(title, kind, target)
+    except gl.GraylogError as e:
+        return jsonify(error=f"errore Graylog: {e}"), 502
+    return jsonify(result), 201

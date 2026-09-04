@@ -79,7 +79,7 @@ mfaForm.addEventListener('submit', async (e) => {
   const data = await res.json();
   if (!res.ok) { err.textContent = data.error || 'errore'; return; }
 
-  window.location.href = '/';
+  window.location.href = '/dashboard.html';
 });
 </script>
 </body>

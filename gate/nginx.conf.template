@@ -8,11 +8,10 @@ http {
     sendfile      on;
     client_max_body_size 20m;
 
-    # AUTH_HOST/AUTH_PORT e GRAYLOG_HOST/GRAYLOG_PORT sono sostituiti da
-    # envsubst all'avvio del container (vedi container-entrypoint.sh),
-    # valorizzati dallo script di discovery verso i moduli peer
-    # ns8-logplatform-auth e ns8-logplatform-graylog.
-    upstream graylog_upstream { server ${GRAYLOG_HOST}:${GRAYLOG_PORT}; }
+    # AUTH_HOST/AUTH_PORT sostituiti da envsubst all'avvio del container
+    # (vedi container-entrypoint.sh), valorizzati dallo script di discovery
+    # verso il modulo peer ns8-logplatform-auth. Graylog non serve più qui:
+    # ci parla solo auth-service, lato server (vedi GRAYLOG_URL su quel modulo).
     upstream auth_upstream    { server ${AUTH_HOST}:${AUTH_PORT}; }
 
     server {
@@ -40,6 +39,10 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
         }
 
+        location = / {
+            return 302 /dashboard.html;
+        }
+
         location / {
             auth_request /auth-check-internal;
             error_page 401 = @login_redirect;
@@ -47,15 +50,11 @@ http {
             auth_request_set $auth_user $upstream_http_x_auth_user;
             proxy_set_header X-Auth-User $auth_user;
 
-            proxy_pass http://graylog_upstream;
+            proxy_pass http://auth_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
         }
 
         location @login_redirect {
