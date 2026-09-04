@@ -8,16 +8,11 @@ http {
     sendfile      on;
     client_max_body_size 20m;
 
-    # AUTH_HOST/AUTH_PORT sostituiti da envsubst all'avvio del container
-    # (vedi container-entrypoint.sh), valorizzati dallo script di discovery
-    # verso il modulo peer ns8-logplatform-auth. Graylog non serve più qui:
-    # ci parla solo auth-service, lato server (vedi GRAYLOG_URL su quel modulo).
     upstream auth_upstream    { server ${AUTH_HOST}:${AUTH_PORT}; }
 
     server {
-        # Solo HTTP in chiaro: TLS pubblico è terminato dal Traefik
-        # centrale di NS8, non da questo container (a differenza del
-        # deploy standalone Docker, dove nginx gestiva anche il certificato).
+        absolute_redirect off;
+
         listen 8080;
         server_name _;
 
