@@ -51,6 +51,7 @@ def create_tenant_stream(tenant: str, retention_days: int = 90) -> dict:
         "index_optimization_max_num_segments": 1,
         "index_optimization_disabled": False,
         "field_type_refresh_interval": 5000,
+        "writable": True,
     })
     index_set_id = index_set["id"]
 
