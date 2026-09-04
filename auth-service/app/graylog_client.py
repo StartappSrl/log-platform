@@ -50,6 +50,7 @@ def create_tenant_stream(tenant: str, retention_days: int = 90) -> dict:
         "replicas": 0,
         "index_optimization_max_num_segments": 1,
         "index_optimization_disabled": False,
+        "field_type_refresh_interval": 5000,
     })
     index_set_id = index_set["id"]
 
@@ -123,15 +124,7 @@ def list_notifications() -> list:
 
 def create_alert(title: str, stream_id: str, query: str, threshold: int,
                   window_minutes: int, notification_ids: list) -> dict:
-    """Allarme semplificato: 'se almeno N messaggi corrispondono alla ricerca
-    entro W minuti sullo stream del tenant, notifica'.
-
-    NOTA: lo schema esatto delle 'conditions' per gli event definition di
-    tipo aggregation-v1 è la mia migliore ricostruzione (non testata dal
-    vivo in questa sessione, a differenza di altre parti del progetto).
-    La prima volta che crei un allarme, verificalo aprendo Graylog
-    direttamente (con le credenziali admin) sotto Alerts > Event
-    Definitions, per controllare che la condizione sia quella attesa."""
+    """Allarme semplificato."""
     series_id = "count-messages"
     return _request("POST", "/api/events/definitions", json={
         "title": title,
