@@ -18,6 +18,14 @@ Due categorie di file:
                      Provvedimento Garante Privacy 27/11/2008 sugli
                      Amministratori di Sistema.
 
+ARCHIVIAZIONE LOCALE (nuova): se 'local_archive_dir' è impostato in
+agent.ini, OGNI file monitorato (sia log_files sia admin_log_files) viene
+anche scritto in un archivio locale compresso e sigillato (hash chain +
+marca temporale opzionale) sotto quella cartella - indipendentemente
+dall'invio a Graylog. Vedi local_archive.py per i dettagli. Questo copre
+tutti i log, non solo quelli di accesso amministrativo (che hanno GIA' un
+meccanismo di conservazione lato server separato).
+
 Uso tipico: seguire (tail -f) uno o più file di log e inoltrarli.
     python3 agent.py --config agent.ini
 
@@ -26,18 +34,23 @@ Per Windows, usa agent_windows.py invece di questo script.
 """
 import argparse
 import configparser
+import signal
 import socket
+import sys
 import threading
 import time
 from pathlib import Path
 
 from gelf_transport import build_gelf_message, connect
+from local_archive import LocalArchiver
+
+_shutdown = threading.Event()
 
 
 def tail_file(path: Path):
     with open(path, "r", errors="replace") as f:
         f.seek(0, 2)  # vai alla fine, invia solo le righe nuove
-        while True:
+        while not _shutdown.is_set():
             line = f.readline()
             if not line:
                 time.sleep(0.5)
@@ -46,18 +59,22 @@ def tail_file(path: Path):
 
 
 def follow(path_str: str, tenant: str, hostname: str, connect_args: tuple, sock_holder: dict,
-           log_class: str | None = None):
+           log_class: str | None = None, archiver: LocalArchiver | None = None):
     path = Path(path_str)
     extra = {"source_file": str(path)}
     if log_class:
         extra["log_class"] = log_class
     for line in tail_file(path):
+        if archiver:
+            archiver.write_line(line)
         payload = build_gelf_message(tenant, hostname, line, extra=extra)
         while True:
             try:
                 sock_holder["sock"].sendall(payload)
                 break
             except (BrokenPipeError, OSError):
+                if _shutdown.is_set():
+                    return
                 time.sleep(2)
                 sock_holder["sock"] = connect(*connect_args)
 
@@ -84,16 +101,47 @@ def main():
     if not log_files and not admin_log_files:
         raise SystemExit("Configura almeno un file in 'log_files' o 'admin_log_files' nell'agent.ini")
 
+    # --- Archiviazione locale (opzionale) ---
+    local_archive_dir = s.get("local_archive_dir", "").strip()
+    archivers = {}
+    if local_archive_dir:
+        tsa_url = s.get("local_archive_tsa_url", "").strip() or None
+        tsa_user = s.get("local_archive_tsa_user", "").strip() or None
+        tsa_password = s.get("local_archive_tsa_password", "").strip() or None
+        tsa_client_cert = s.get("local_archive_tsa_client_cert", "").strip() or None
+        tsa_client_key = s.get("local_archive_tsa_client_key", "").strip() or None
+        for p in log_files + admin_log_files:
+            archivers[p] = LocalArchiver(
+                source_id=Path(p).name, archive_dir=local_archive_dir,
+                tenant=tenant, hostname=hostname,
+                tsa_url=tsa_url, tsa_user=tsa_user, tsa_password=tsa_password,
+                tsa_client_cert=tsa_client_cert, tsa_client_key=tsa_client_key,
+            )
+        print(f"Archiviazione locale attiva: {local_archive_dir} "
+              f"({len(archivers)} sorgenti, marca temporale {'attiva' if tsa_url else 'non configurata'})")
+
     connect_args = (graylog_host, graylog_port, ca_cert, client_cert, client_key)
     sock_holder = {"sock": connect(*connect_args)}
+
+    def handle_signal(signum, frame):
+        print("Arresto in corso, sigillo gli archivi locali del giorno in corso...")
+        _shutdown.set()
+        for a in archivers.values():
+            a.close()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
 
     threads = []
     for p in log_files:
         threads.append(threading.Thread(
-            target=follow, args=(p, tenant, hostname, connect_args, sock_holder, None), daemon=True))
+            target=follow, args=(p, tenant, hostname, connect_args, sock_holder, None, archivers.get(p)),
+            daemon=True))
     for p in admin_log_files:
         threads.append(threading.Thread(
-            target=follow, args=(p, tenant, hostname, connect_args, sock_holder, "admin-access"), daemon=True))
+            target=follow, args=(p, tenant, hostname, connect_args, sock_holder, "admin-access", archivers.get(p)),
+            daemon=True))
 
     for t in threads:
         t.start()

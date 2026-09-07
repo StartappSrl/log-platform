@@ -13,6 +13,12 @@ Configurazione: stesso agent.ini della versione Linux, con in più una chiave
 opzionale 'event_logs' nella sezione [agent], es.:
     event_logs = Application, System
 
+ARCHIVIAZIONE LOCALE (nuova): se 'local_archive_dir' è impostato in
+agent.ini, ogni sorgente (file o canale event log) viene anche scritta in
+un archivio locale compresso e sigillato (hash chain + marca temporale
+opzionale, se 'openssl' è nel PATH di Windows - non scontato, verifica con
+'where openssl' da un prompt). Vedi local_archive.py per i dettagli.
+
 Installazione come servizio (da un prompt Amministratore):
     python agent_windows.py install
     python agent_windows.py start
@@ -35,6 +41,7 @@ import win32service
 import win32serviceutil
 
 from gelf_transport import build_gelf_message, connect
+from local_archive import LocalArchiver
 
 SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 STATE_FILE = SCRIPT_DIR / "agent_state.json"
@@ -68,12 +75,15 @@ def tail_file(path: Path, stop_flag: dict):
 
 
 def follow_file(path_str: str, tenant: str, hostname: str, connect_args: tuple,
-                 sock_holder: dict, stop_flag: dict, log_class: str | None = None):
+                 sock_holder: dict, stop_flag: dict, log_class: str | None = None,
+                 archiver: LocalArchiver | None = None):
     path = Path(path_str)
     extra_base = {"source_file": str(path)}
     if log_class:
         extra_base["log_class"] = log_class
     for line in tail_file(path, stop_flag):
+        if archiver:
+            archiver.write_line(line)
         payload = build_gelf_message(tenant, hostname, line, extra=extra_base)
         while True:
             try:
@@ -87,7 +97,8 @@ def follow_file(path_str: str, tenant: str, hostname: str, connect_args: tuple,
 
 
 def follow_event_log(channel: str, tenant: str, hostname: str, connect_args: tuple,
-                      sock_holder: dict, stop_flag: dict, state: dict, log_class: str | None = None):
+                      sock_holder: dict, stop_flag: dict, state: dict,
+                      log_class: str | None = None, archiver: LocalArchiver | None = None):
     """Legge in polling i nuovi eventi di un canale Event Log (Application,
     System, Security, ...) e li inoltra come messaggi GELF. Tiene traccia
     dell'ultimo record letto in agent_state.json per non reinviare tutto
@@ -119,6 +130,9 @@ def follow_event_log(channel: str, tenant: str, hostname: str, connect_args: tup
                     message = " ".join(ev.StringInserts) if ev.StringInserts else str(ev.EventID)
                 except Exception:
                     message = f"EventID {ev.EventID}"
+
+                if archiver:
+                    archiver.write_line(message)
 
                 extra = {
                     "event_channel": channel,
@@ -174,11 +188,27 @@ def load_config(config_path: Path):
         "log_files": [p.strip() for p in s.get("log_files", "").split(",") if p.strip()],
         "event_logs": [c.strip() for c in s.get("event_logs", "").split(",") if c.strip()],
         "admin_log_files": [p.strip() for p in s.get("admin_log_files", "").split(",") if p.strip()],
-        # Canali Event Log da taggare come log_class=admin-access (tipicamente "Security",
-        # dove Windows registra i logon: Event ID 4624/4625/4672). Vedi
-        # scripts/provision-admin-log-stream.sh e seal-admin-logs.sh.
         "admin_event_logs": [c.strip() for c in s.get("admin_event_logs", "").split(",") if c.strip()],
+        "local_archive_dir": s.get("local_archive_dir", "").strip(),
+        "local_archive_tsa_url": s.get("local_archive_tsa_url", "").strip() or None,
+        "local_archive_tsa_user": s.get("local_archive_tsa_user", "").strip() or None,
+        "local_archive_tsa_password": s.get("local_archive_tsa_password", "").strip() or None,
+        "local_archive_tsa_client_cert": s.get("local_archive_tsa_client_cert", "").strip() or None,
+        "local_archive_tsa_client_key": s.get("local_archive_tsa_client_key", "").strip() or None,
     }
+
+
+def _make_archiver(source_id: str, config: dict) -> LocalArchiver | None:
+    if not config["local_archive_dir"]:
+        return None
+    return LocalArchiver(
+        source_id=source_id, archive_dir=config["local_archive_dir"],
+        tenant=config["tenant"], hostname=config["hostname"],
+        tsa_url=config["local_archive_tsa_url"], tsa_user=config["local_archive_tsa_user"],
+        tsa_password=config["local_archive_tsa_password"],
+        tsa_client_cert=config["local_archive_tsa_client_cert"],
+        tsa_client_key=config["local_archive_tsa_client_key"],
+    )
 
 
 def run_agent(stop_flag: dict):
@@ -188,26 +218,35 @@ def run_agent(stop_flag: dict):
     sock_holder = {"sock": connect(*connect_args)}
     state = _load_state()
 
+    archivers = []
     threads = []
     for p in config["log_files"]:
+        arc = _make_archiver(Path(p).name, config)
+        archivers.append(arc)
         threads.append(threading.Thread(
             target=follow_file,
-            args=(p, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag),
+            args=(p, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, None, arc),
             daemon=True))
     for p in config["admin_log_files"]:
+        arc = _make_archiver(Path(p).name, config)
+        archivers.append(arc)
         threads.append(threading.Thread(
             target=follow_file,
-            args=(p, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, "admin-access"),
+            args=(p, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, "admin-access", arc),
             daemon=True))
     for channel in config["event_logs"]:
+        arc = _make_archiver(channel, config)
+        archivers.append(arc)
         threads.append(threading.Thread(
             target=follow_event_log,
-            args=(channel, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, state, None),
+            args=(channel, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, state, None, arc),
             daemon=True))
     for channel in config["admin_event_logs"]:
+        arc = _make_archiver(channel, config)
+        archivers.append(arc)
         threads.append(threading.Thread(
             target=follow_event_log,
-            args=(channel, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, state, "admin-access"),
+            args=(channel, config["tenant"], config["hostname"], connect_args, sock_holder, stop_flag, state, "admin-access", arc),
             daemon=True))
 
     if not threads:
@@ -215,22 +254,26 @@ def run_agent(stop_flag: dict):
 
     for t in threads:
         t.start()
-    return threads
+    return threads, archivers
 
 
 class LogPlatformAgentService(win32serviceutil.ServiceFramework):
     _svc_name_ = "LogPlatformAgent"
     _svc_display_name_ = "Log Platform Agent"
-    _svc_description_ = "Invia log (file e/o Event Log) al server Log Platform via GELF/mTLS"
+    _svc_description_ = "Invia log (file e/o Event Log) al server Log Platform via GELF/mTLS, con archiviazione locale compressa e sigillata"
 
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
         self.stop_event = win32event.CreateEvent(None, 0, 0, None)
         self.stop_flag = {"stop": False}
+        self.archivers = []
 
     def SvcStop(self):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         self.stop_flag["stop"] = True
+        for arc in self.archivers:
+            if arc:
+                arc.close()
         win32event.SetEvent(self.stop_event)
 
     def SvcDoRun(self):
@@ -238,7 +281,7 @@ class LogPlatformAgentService(win32serviceutil.ServiceFramework):
             servicemanager.EVENTLOG_INFORMATION_TYPE,
             servicemanager.PYS_SERVICE_STARTED,
             (self._svc_name_, ""))
-        run_agent(self.stop_flag)
+        _, self.archivers = run_agent(self.stop_flag)
         win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
 
 

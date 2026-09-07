@@ -24,3 +24,25 @@ admin_log_files = /var/log/auth.log
 # taggato automaticamente log_class=admin-access.
 # admin_event_logs = Security
 
+# --- Archiviazione locale compressa e sigillata (opzionale, entrambe le piattaforme) ---
+# Se impostato, OGNI sorgente sopra (log_files, admin_log_files, event_logs,
+# admin_event_logs) viene ANCHE scritta in un archivio locale compresso
+# (gzip) e sigillato con hash chain, indipendentemente dall'invio a
+# Graylog. Copre TUTTI i log raccolti da questo agent, non solo quelli di
+# accesso amministrativo (che hanno già un meccanismo separato lato
+# server). Utile come copia locale presso il cliente, prova di integrità
+# nel tempo, o backup indipendente dal server.
+#
+# Lascia vuoto per disattivare (nessun file extra creato).
+local_archive_dir = /var/lib/logplatform-agent/archive
+
+# Marca temporale (RFC 3161) opzionale sull'hash della catena giornaliera.
+# Richiede 'openssl' nel PATH (su Linux quasi sempre presente; su Windows
+# verifica con "where openssl" - se manca, l'archiviazione compressa e la
+# hash chain funzionano comunque, solo senza marca temporale esterna).
+# Stessa TSA che usi lato server (es. Namirial) o una TSA gratuita di test.
+# local_archive_tsa_url =
+# local_archive_tsa_user =
+# local_archive_tsa_password =
+# local_archive_tsa_client_cert =
+# local_archive_tsa_client_key =
