@@ -12,10 +12,6 @@ GRAYLOG_API_USER = os.environ.get("GRAYLOG_API_USER", "admin")
 GRAYLOG_API_PASSWORD = os.environ.get("GRAYLOG_API_PASSWORD", "")
 
 _AUTH = (GRAYLOG_API_USER, GRAYLOG_API_PASSWORD)
-# "Accept: application/json" e' fondamentale: senza, alcuni endpoint di
-# ricerca (es. /api/search/universal/relative con 'fields' impostato)
-# rispondono in text/csv invece che in JSON. Scoperto testando dal vivo
-# contro un Graylog reale, non documentato in modo ovvio.
 _HDRS = {"Content-Type": "application/json", "Accept": "application/json",
          "X-Requested-By": "logplatform-dashboard"}
 
@@ -81,14 +77,18 @@ def create_tenant_stream(tenant: str, retention_days: int = 90) -> dict:
 def search(stream_id: str, query: str = "*", range_minutes: int = 60, limit: int = 150) -> dict:
     """Ricerca semplice, ultimi N minuti, scoperta al singolo stream (tenant).
     'fields' e' obbligatorio per questo endpoint (altrimenti risponde 400
-    'must not be empty, arg6') - scoperto testando dal vivo."""
+    'must not be empty, arg6'). Il campo che identifica l'host che ha
+    inviato il messaggio si chiama 'source' nella risposta di Graylog, NON
+    'host' (che pure e' il nome del campo GELF originale) - scoperto
+    testando dal vivo, entrambe le cose non erano ovvie/documentate in
+    modo chiaro."""
     return _request("GET", "/api/search/universal/relative", params={
         "query": query or "*",
         "range": range_minutes * 60,
         "limit": limit,
         "streams": stream_id,
         "sort": "timestamp:desc",
-        "fields": "timestamp,message,full_message,host",
+        "fields": "timestamp,message,full_message,source",
     })
 
 
@@ -174,7 +174,7 @@ def get_latest_inventory_per_host(stream_id: str, range_hours: int = 192, limit:
     latest_by_host = {}
     for entry in messages:
         m = entry.get("message", entry)
-        host = m.get("host")
+        host = m.get("source")
         ts = m.get("timestamp", "")
         if not host:
             continue
@@ -198,7 +198,7 @@ def get_latest_inventory_per_host(stream_id: str, range_hours: int = 192, limit:
 
 def get_inventory_software_for_host(stream_id: str, hostname: str, range_hours: int = 192) -> list:
     """Ritorna l'elenco software completo per un singolo host."""
-    query = f'log_class:inventory AND host:"{hostname}"'
+    query = f'log_class:inventory AND source:"{hostname}"'
     result = search(stream_id, query=query, range_minutes=range_hours * 60, limit=1)
     messages = result.get("messages", [])
     if not messages:
