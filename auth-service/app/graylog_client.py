@@ -3,6 +3,7 @@ Client per l'API REST di Graylog, usato dal pannello semplificato al posto
 della UI nativa di Graylog. Le credenziali (GRAYLOG_API_USER/PASSWORD) sono
 lato server: gli utenti finali non le vedono mai.
 """
+import json
 import os
 import requests
 
@@ -11,7 +12,12 @@ GRAYLOG_API_USER = os.environ.get("GRAYLOG_API_USER", "admin")
 GRAYLOG_API_PASSWORD = os.environ.get("GRAYLOG_API_PASSWORD", "")
 
 _AUTH = (GRAYLOG_API_USER, GRAYLOG_API_PASSWORD)
-_HDRS = {"Content-Type": "application/json", "X-Requested-By": "logplatform-dashboard"}
+# "Accept: application/json" e' fondamentale: senza, alcuni endpoint di
+# ricerca (es. /api/search/universal/relative con 'fields' impostato)
+# rispondono in text/csv invece che in JSON. Scoperto testando dal vivo
+# contro un Graylog reale, non documentato in modo ovvio.
+_HDRS = {"Content-Type": "application/json", "Accept": "application/json",
+         "X-Requested-By": "logplatform-dashboard"}
 
 
 class GraylogError(Exception):
@@ -73,13 +79,16 @@ def create_tenant_stream(tenant: str, retention_days: int = 90) -> dict:
 
 
 def search(stream_id: str, query: str = "*", range_minutes: int = 60, limit: int = 150) -> dict:
-    """Ricerca semplice, ultimi N minuti, scoperta al singolo stream (tenant)."""
+    """Ricerca semplice, ultimi N minuti, scoperta al singolo stream (tenant).
+    'fields' e' obbligatorio per questo endpoint (altrimenti risponde 400
+    'must not be empty, arg6') - scoperto testando dal vivo."""
     return _request("GET", "/api/search/universal/relative", params={
         "query": query or "*",
         "range": range_minutes * 60,
         "limit": limit,
         "streams": stream_id,
         "sort": "timestamp:desc",
+        "fields": "timestamp,message,full_message,host",
     })
 
 
@@ -155,14 +164,10 @@ def create_alert(title: str, stream_id: str, query: str, threshold: int,
         "notification_settings": {"grace_period_ms": 300000, "backlog_size": 10},
         "notifications": [{"notification_id": nid} for nid in notification_ids],
     })
-# --- Da aggiungere a app/graylog_client.py (in fondo al file) ---
-import json
 
 
 def get_latest_inventory_per_host(stream_id: str, range_hours: int = 192, limit: int = 500) -> list:
-    """Ritorna l'ultimo inventario ricevuto per ciascun host del tenant
-    (uno per macchina, non uno per messaggio: se una macchina ha inviato
-    più inventari nel periodo, tiene solo il più recente)."""
+    """Ritorna l'ultimo inventario ricevuto per ciascun host del tenant."""
     result = search(stream_id, query="log_class:inventory", range_minutes=range_hours * 60, limit=limit)
     messages = result.get("messages", [])
 
@@ -192,9 +197,7 @@ def get_latest_inventory_per_host(stream_id: str, range_hours: int = 192, limit:
 
 
 def get_inventory_software_for_host(stream_id: str, hostname: str, range_hours: int = 192) -> list:
-    """Ritorna l'elenco software completo per un singolo host (rotta
-    separata dalla vista d'insieme, per non appesantirla con centinaia di
-    pacchetti per ogni macchina)."""
+    """Ritorna l'elenco software completo per un singolo host."""
     query = f'log_class:inventory AND host:"{hostname}"'
     result = search(stream_id, query=query, range_minutes=range_hours * 60, limit=1)
     messages = result.get("messages", [])
