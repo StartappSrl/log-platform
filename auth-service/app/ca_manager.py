@@ -1,19 +1,19 @@
 """
 Gestione della CA interna usata per l'mTLS tra gli agent client e l'input
 GELF di Graylog. auth-service possiede questa CA (la genera al primo avvio
-se non esiste, e la conserva su un percorso persistente): è il punto
-naturale perché è già il servizio che genera i pacchetti agent dal
-pannello, e i suoi dati (come la password MariaDB) sono già trattati con
+se non esiste, e la conserva su un percorso persistente): e' il punto
+naturale perche' e' gia' il servizio che genera i pacchetti agent dal
+pannello, e i suoi dati (come la password MariaDB) sono gia' trattati con
 la stessa cura.
 
 Persistenza: CA_DIR (di default /data/ca) deve essere un volume/percorso
 che sopravvive ai riavvii del container - altrimenti ogni riavvio genera
-una CA diversa e tutti i certificati già distribuiti ai client smettono
+una CA diversa e tutti i certificati gia' distribuiti ai client smettono
 di funzionare.
 """
 import datetime
-import ipaddress
 import os
+import secrets
 from pathlib import Path
 
 from cryptography import x509
@@ -24,6 +24,7 @@ from cryptography.x509.oid import NameOID
 CA_DIR = Path(os.environ.get("CA_DIR", "/data/ca"))
 CA_CERT_PATH = CA_DIR / "ca.pem"
 CA_KEY_PATH = CA_DIR / "ca-key.pem"
+SETUP_TOKEN_PATH = CA_DIR / "setup_token.txt"
 
 
 def _generate_key():
@@ -44,7 +45,7 @@ def _write_pem_cert(path: Path, cert):
 
 
 def ensure_ca_exists() -> None:
-    """Genera la CA se non esiste già. Idempotente: se esiste, non tocca nulla."""
+    """Genera la CA se non esiste gia'. Idempotente: se esiste, non tocca nulla."""
     if CA_CERT_PATH.exists() and CA_KEY_PATH.exists():
         return
 
@@ -86,12 +87,26 @@ def _load_ca():
     return ca_key, ca_cert
 
 
+def get_or_create_setup_token() -> str:
+    """Token segreto per le rotte di setup una tantum (issue-server-cert,
+    ecc.). Va letto direttamente dal file dentro il container (podman
+    exec), MAI passato in rete - e' l'unico modo per distinguere
+    l'amministratore locale dal traffico esterno in questo ambiente
+    (l'IP sorgente non e' affidabile con podman rootless + slirp4netns,
+    scoperto testando dal vivo: sia il traffico locale sia quello esterno
+    tramite Traefik/gate appaiono con lo stesso indirizzo 10.0.2.100)."""
+    ensure_ca_exists()
+    if not SETUP_TOKEN_PATH.exists():
+        token = secrets.token_urlsafe(32)
+        SETUP_TOKEN_PATH.write_text(token)
+        os.chmod(SETUP_TOKEN_PATH, 0o600)
+    return SETUP_TOKEN_PATH.read_text().strip()
+
+
 def issue_certificate(common_name: str, is_server: bool = False,
                        dns_names: list | None = None) -> tuple[str, str]:
     """Emette un certificato (client o server) firmato dalla CA interna.
-    Ritorna (cert_pem, key_pem). Non salva nulla su disco: chi chiama
-    decide cosa farne (es. includerlo in un pacchetto agent, o scriverlo
-    su un percorso da montare in un altro modulo)."""
+    Ritorna (cert_pem, key_pem)."""
     ca_key, ca_cert = _load_ca()
 
     key = _generate_key()
