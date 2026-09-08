@@ -83,7 +83,7 @@
       </div>
     </div>
     <table id="tenants-table">
-      <thead><tr><th>Identificativo</th><th>Nome</th><th>Stream Graylog</th><th>Agent</th></tr></thead>
+      <thead><tr><th>Identificativo</th><th>Nome</th><th>Stream Graylog</th></tr></thead>
       <tbody></tbody>
     </table>
     <div class="empty" id="tenants-empty" style="display:none">Nessun cliente ancora. Creane uno sopra.</div>
@@ -292,7 +292,7 @@ async function loadTenants() {
     document.getElementById('tenants-empty').style.display = tenants.length ? 'none' : 'block';
     tenants.forEach(t => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.stream_id || ''}</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Scarica agent</a></td>`;
+      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.stream_id || ''}</td>`;
       tbody.appendChild(tr);
     });
   } catch (e) { showError(e.message); }
