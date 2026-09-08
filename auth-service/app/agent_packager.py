@@ -4,8 +4,8 @@ client firmato dalla CA interna, pronto da scaricare dal pannello.
 
 I file sorgente dell'agent (agent.py, agent_windows.py, ecc.) sono inclusi
 nell'immagine Docker di auth-service sotto AGENT_TEMPLATES_DIR (vedi
-Dockerfile: COPY agent /agent_templates) - non generati qui, solo copiati
-e personalizzati con i dati del tenant.
+Dockerfile: COPY agent_templates /agent_templates) - non generati qui, solo
+copiati e personalizzati con i dati del tenant.
 """
 import io
 import os
@@ -35,6 +35,8 @@ log_files = /var/log/syslog
 
 local_archive_dir = /var/lib/logplatform-agent/archive
 # local_archive_tsa_url =
+
+inventory_interval_hours = 24
 """
 
 
@@ -48,7 +50,7 @@ def build_agent_package(tenant: str) -> bytes:
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         # File statici presi dal template incluso nell'immagine
         for name in ("agent.py", "agent_windows.py", "gelf_transport.py", "local_archive.py",
-                     "requirements-windows.txt", "logplatform-agent.service.example"):
+                     "inventory.py", "requirements-windows.txt", "logplatform-agent.service.example"):
             src = AGENT_TEMPLATES_DIR / name
             if src.exists():
                 tar.add(src, arcname=f"agent-{tenant}/{name}")
