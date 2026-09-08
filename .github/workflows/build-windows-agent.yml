@@ -1,0 +1,53 @@
+name: Build agent Windows (.exe)
+
+# Costruisce un eseguibile Windows standalone dell'agent, cosi' i client
+# Windows non devono installare Python/pywin32 a mano - basta scaricare
+# l'exe (unico, uguale per tutti i tenant) + agent.ini/certificati
+# specifici del cliente (quelli scaricati dal pannello).
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installa le dipendenze
+        run: |
+          pip install pywin32 pyinstaller
+
+      - name: Build eseguibile
+        working-directory: agent
+        run: |
+          pyinstaller --onefile --name logplatform-agent `
+            --hidden-import win32timezone `
+            --hidden-import win32serviceutil `
+            --hidden-import win32service `
+            --hidden-import win32event `
+            --hidden-import servicemanager `
+            agent_windows.py
+
+      - name: Verifica che l'eseguibile esista
+        working-directory: agent
+        run: |
+          if (!(Test-Path "dist\logplatform-agent.exe")) {
+            Write-Error "Build fallita: dist\logplatform-agent.exe non trovato"
+            exit 1
+          }
+          Write-Host "Eseguibile creato, dimensione:"
+          Get-Item "dist\logplatform-agent.exe" | Select-Object Length
+
+      - name: Carica come artefatto della build
+        uses: actions/upload-artifact@v4
+        with:
+          name: logplatform-agent-windows-${{ github.ref_name }}
+          path: agent/dist/logplatform-agent.exe
+          retention-days: 90

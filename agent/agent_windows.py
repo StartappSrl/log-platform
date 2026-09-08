@@ -50,7 +50,13 @@ from gelf_transport import build_gelf_message, connect
 from local_archive import LocalArchiver
 from inventory import build_inventory_gelf_message
 
-SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+# Quando l'agent gira come .exe (PyInstaller), __file__ punta a una
+# cartella temporanea di estrazione, NON alla cartella dove si trova
+# davvero il file .exe: in quel caso serve usare sys.executable invece.
+if getattr(sys, "frozen", False):
+    SCRIPT_DIR = Path(os.path.dirname(sys.executable))
+else:
+    SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 STATE_FILE = SCRIPT_DIR / "agent_state.json"
 
 

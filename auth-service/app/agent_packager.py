@@ -22,7 +22,10 @@ GELF_PORT = int(os.environ.get("GELF_PORT", "12201"))
 def _agent_ini_content(tenant: str) -> str:
     return f"""[agent]
 tenant = {tenant}
-hostname = CAMBIA-QUESTO-HOSTNAME
+# Lascia vuoto/commentato per rilevare automaticamente l'hostname della
+# macchina su cui gira l'agent (comportamento di default). Scommenta e
+# personalizza solo se vuoi un nome diverso da quello di sistema.
+# hostname = nome-personalizzato
 graylog_host = {PUBLIC_DOMAIN}
 graylog_port = {GELF_PORT}
 ca_cert = ca.pem
