@@ -257,3 +257,53 @@ def download_agent_package(tenant_name):
         as_attachment=True,
         download_name=f"agent-{tenant_name}.tar.gz",
     )
+# --- Da aggiungere a app/dashboard.py (in fondo al file) ---
+
+from . import github_release
+
+
+@dash.get("/tenants/<tenant_name>/agent-package-windows")
+@login_required
+def download_agent_package_windows(tenant_name):
+    t = _tenant_or_403(tenant_name)
+    if not t:
+        return jsonify(error="tenant non trovato o non autorizzato"), 403
+
+    try:
+        package_bytes = agent_packager.build_agent_package_windows_exe(tenant_name)
+    except github_release.GitHubReleaseError as e:
+        return jsonify(error=f"errore nel recupero dell'eseguibile da GitHub: {e}"), 502
+    except Exception as e:
+        return jsonify(error=f"errore nella generazione del pacchetto: {e}"), 500
+
+    return send_file(
+        io.BytesIO(package_bytes),
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"agent-{tenant_name}-windows.zip",
+    )
+# --- Da aggiungere a app/dashboard.py (in fondo al file) ---
+
+from . import github_release
+
+
+@dash.get("/tenants/<tenant_name>/agent-package-windows")
+@login_required
+def download_agent_package_windows(tenant_name):
+    t = _tenant_or_403(tenant_name)
+    if not t:
+        return jsonify(error="tenant non trovato o non autorizzato"), 403
+
+    try:
+        package_bytes = agent_packager.build_agent_package_windows_exe(tenant_name)
+    except github_release.GitHubReleaseError as e:
+        return jsonify(error=f"errore nel recupero dell'eseguibile da GitHub: {e}"), 502
+    except Exception as e:
+        return jsonify(error=f"errore nella generazione del pacchetto: {e}"), 500
+
+    return send_file(
+        io.BytesIO(package_bytes),
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"agent-{tenant_name}-windows.zip",
+    )

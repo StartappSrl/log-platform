@@ -292,7 +292,7 @@ async function loadTenants() {
     document.getElementById('tenants-empty').style.display = tenants.length ? 'none' : 'block';
     tenants.forEach(t => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.stream_id || ''}</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Scarica agent</a></td>`;
+      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.stream_id || ''}</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a></td>`;
       tbody.appendChild(tr);
     });
   } catch (e) { showError(e.message); }
