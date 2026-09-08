@@ -46,3 +46,10 @@ local_archive_dir = /var/lib/logplatform-agent/archive
 # local_archive_tsa_password =
 # local_archive_tsa_client_cert =
 # local_archive_tsa_client_key =
+
+# --- Inventario hardware/software/risorse (entrambe le piattaforme) ---
+# Invia periodicamente (subito all'avvio, poi ogni N ore) un messaggio
+# speciale con: CPU, RAM, dischi, interfacce di rete, elenco software
+# installato. Arriva a Graylog taggato log_class=inventory, nello stesso
+# stream del tenant. Imposta a 0 per disattivare.
+inventory_interval_hours = 24

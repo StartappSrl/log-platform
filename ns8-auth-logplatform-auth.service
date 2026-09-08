@@ -1,0 +1,32 @@
+[Unit]
+Description=Log Platform - Auth Service (login + MFA)
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%E/state/environment
+WorkingDirectory=%E/state
+Restart=always
+ExecStartPre=/bin/rm -f %t/logplatform-auth.pid %t/logplatform-auth.ctr-id
+ExecStart=/usr/bin/podman run --conmon-pidfile %t/logplatform-auth.pid \
+    --cidfile %t/logplatform-auth.ctr-id \
+    --cgroups=no-conmon \
+    --replace --name logplatform-auth -d \
+    --env-file=%E/state/environment \
+    --env-file=%E/state/secrets.env \
+    --env=DATABASE_URL=mysql+pymysql://${MARIADB_USER}:${MARIADB_PASSWORD}@mariadb:${MARIADB_PORT}/${MARIADB_DATABASE} \
+    --env=GRAYLOG_URL=http://graylog:${GRAYLOG_PORT} \
+    --env=CA_DIR=/data/ca \
+    --env=GELF_PORT=12201 \
+    --add-host=mariadb:10.0.2.2 \
+    --add-host=graylog:10.0.2.2 \
+    --publish 127.0.0.1:${TCP_PORT}:8000 \
+    --volume logplatform-auth-ca:/data/ca:z \
+    --network=slirp4netns:allow_host_loopback=true \
+    ${AUTH_SERVICE_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/logplatform-auth.ctr-id -t 10
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/logplatform-auth.ctr-id
+PIDFile=%t/logplatform-auth.pid
+Type=forking
+
+[Install]
+WantedBy=default.target

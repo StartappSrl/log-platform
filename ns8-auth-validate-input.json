@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "configure-module input",
+  "$id": "http://schema.nethserver.org/logplatform-auth/configure-module-input.json",
+  "type": "object",
+  "required": ["mariadb_port", "mariadb_user", "mariadb_password", "mariadb_database",
+               "graylog_port", "graylog_api_user", "graylog_api_password", "public_domain"],
+  "properties": {
+    "mariadb_port": {"type": ["string", "integer"]},
+    "mariadb_user": {"type": "string"},
+    "mariadb_password": {"type": "string"},
+    "mariadb_database": {"type": "string"},
+    "graylog_port": {"type": ["string", "integer"]},
+    "graylog_api_user": {"type": "string"},
+    "graylog_api_password": {"type": "string"},
+    "public_domain": {"type": "string"},
+    "session_cookie_name": {"type": "string"},
+    "session_lifetime_minutes": {"type": "integer"}
+  }
+}

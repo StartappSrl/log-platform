@@ -22,6 +22,9 @@ def create_app() -> Flask:
     from .dashboard import dash
     app.register_blueprint(dash)
 
+    from .setup_routes import setup_bp
+    app.register_blueprint(setup_bp)
+
     with app.app_context():
         db.create_all()
 

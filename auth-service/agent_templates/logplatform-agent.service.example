@@ -1,0 +1,18 @@
+[Unit]
+Description=Log Platform Agent (invio log via GELF/mTLS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adatta il percorso alla cartella dove hai estratto il pacchetto agent
+WorkingDirectory=/opt/logplatform-agent
+ExecStart=/usr/bin/python3 /opt/logplatform-agent/agent.py --config /opt/logplatform-agent/agent.ini
+Restart=always
+RestartSec=5
+# Esegui come utente dedicato invece di root, se possibile: crea un utente
+# di sistema con accesso in lettura ai file di log da monitorare.
+# User=logplatform-agent
+
+[Install]
+WantedBy=multi-user.target

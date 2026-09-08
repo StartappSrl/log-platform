@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+# Input atteso: {"mariadb_port": ..., "mariadb_user": ..., "mariadb_password": ...,
+#                "mariadb_database": ..., "graylog_port": ..., "graylog_api_user": ...,
+#                "graylog_api_password": ..., "public_domain": ...,
+#                "session_cookie_name": ..., "session_lifetime_minutes": ...}
+#
+# public_domain: il dominio pubblico usato nei pacchetti agent generati dal
+# pannello (es. "logs.tuaazienda.it") - deve combaciare con quello
+# configurato sul modulo gate.
+import json
+import sys
+import agent
+
+data = json.load(sys.stdin)
+
+for required in ("mariadb_port", "mariadb_user", "mariadb_password", "mariadb_database",
+                  "graylog_port", "graylog_api_user", "graylog_api_password", "public_domain"):
+    if not data.get(required):
+        print(f"{required} mancante", file=sys.stderr)
+        sys.exit(1)
+
+agent.set_env("SESSION_COOKIE_NAME", data.get("session_cookie_name", "logplatform_session"))
+agent.set_env("SESSION_LIFETIME_MINUTES", str(data.get("session_lifetime_minutes", 480)))
+agent.set_env("MARIADB_PORT", str(data["mariadb_port"]))
+agent.set_env("MARIADB_USER", data["mariadb_user"])
+agent.set_env("MARIADB_PASSWORD", data["mariadb_password"])
+agent.set_env("MARIADB_DATABASE", data["mariadb_database"])
+agent.set_env("GRAYLOG_PORT", str(data["graylog_port"]))
+agent.set_env("GRAYLOG_API_USER", data["graylog_api_user"])
+agent.set_env("GRAYLOG_API_PASSWORD", data["graylog_api_password"])
+agent.set_env("PUBLIC_DOMAIN", data["public_domain"])

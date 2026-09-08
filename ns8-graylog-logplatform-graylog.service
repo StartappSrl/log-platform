@@ -1,0 +1,32 @@
+[Unit]
+Description=Log Platform - Graylog
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%E/state/environment
+WorkingDirectory=%E/state
+Restart=always
+ExecStartPre=/bin/rm -f %t/logplatform-graylog.pid %t/logplatform-graylog.ctr-id
+ExecStart=/usr/bin/podman run --conmon-pidfile %t/logplatform-graylog.pid \
+    --cidfile %t/logplatform-graylog.ctr-id \
+    --cgroups=no-conmon \
+    --replace --name logplatform-graylog -d \
+    --env-file=%E/state/environment \
+    --env-file=%E/state/secrets.env \
+    --env=GRAYLOG_MONGODB_URI=mongodb://mongodb:${MONGODB_PORT}/graylog \
+    --env=GRAYLOG_ELASTICSEARCH_HOSTS=http://opensearch:${OPENSEARCH_PORT} \
+    --add-host=mongodb:10.0.2.2 \
+    --add-host=opensearch:10.0.2.2 \
+    --publish 127.0.0.1:${TCP_PORT}:9000 \
+    --publish 0.0.0.0:12201:12201 \
+    --volume logplatform-graylog-data:/usr/share/graylog/data:z \
+    --volume %E/state/certs:/etc/graylog/certs:z \
+    --network=slirp4netns:allow_host_loopback=true \
+    ${GRAYLOG_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/logplatform-graylog.ctr-id -t 10
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/logplatform-graylog.ctr-id
+PIDFile=%t/logplatform-graylog.pid
+Type=forking
+
+[Install]
+WantedBy=default.target

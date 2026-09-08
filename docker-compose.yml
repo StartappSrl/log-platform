@@ -13,6 +13,7 @@ volumes:
   graylog_journal:
   mariadb_data:
 
+  auth_ca_data:
 services:
 
   mongodb:
@@ -94,6 +95,8 @@ services:
       - GRAYLOG_API_PASSWORD=${GRAYLOG_API_PASSWORD}
     networks: [backend, frontend]
 
+    volumes:
+      - auth_ca_data:/data/ca
   ai-service:
     build: ./ai-service
     restart: unless-stopped

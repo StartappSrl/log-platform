@@ -56,7 +56,6 @@
   <button data-panel="ricerca" onclick="showPanel('ricerca')">Ricerca</button>
   <button data-panel="allarmi" onclick="showPanel('allarmi')">Allarmi</button>
   <button data-panel="notifiche" onclick="showPanel('notifiche')">Notifiche</button>
-  <button data-panel="inventario" onclick="showPanel('inventario')">Inventario</button>
 </nav>
 
 <main>
@@ -187,33 +186,6 @@
     </table>
     <div class="empty" id="notifications-empty" style="display:none">Nessuna notifica configurata.</div>
   </section>
-
-  <section class="panel" id="panel-inventario">
-    <div class="row">
-      <div id="inventario-tenant-wrap">
-        <label>Cliente</label>
-        <select id="inventario-tenant"></select>
-      </div>
-      <button class="primary" onclick="loadInventory()">Aggiorna</button>
-    </div>
-    <table id="inventory-table">
-      <thead><tr>
-        <th>Host</th><th>Sistema operativo</th><th>CPU</th><th>RAM</th>
-        <th>Disco (usato/totale)</th><th>Software</th><th>Ultimo aggiornamento</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table>
-    <div class="empty" id="inventory-empty" style="display:none">Nessun inventario ricevuto ancora per questo cliente (arriva entro 24 ore dal primo avvio dell'agent).</div>
-
-    <div id="inventory-software-detail" style="display:none; margin-top:1.5rem">
-      <h3 id="inventory-software-title" style="font-size:.95rem"></h3>
-      <table id="inventory-software-table">
-        <thead><tr><th>Pacchetto</th><th>Versione</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
 </main>
 
 <script>
@@ -245,7 +217,6 @@ function showPanel(name) {
   if (name === 'ricerca') loadTenantOptions('ricerca-tenant');
   if (name === 'allarmi') { loadTenantOptions('allarme-tenant'); loadNotificationsForCheckboxes(); loadAlarms(); }
   if (name === 'notifiche') { loadTenantOptions('notifica-tenant'); loadNotifications(); }
-  if (name === 'inventario') { loadTenantOptions('inventario-tenant').then(loadInventory); }
 }
 
 // --- Chi sono ---
@@ -417,46 +388,6 @@ async function createNotification() {
     document.getElementById('notifica-target').value = '';
     showError('');
     loadNotifications();
-  } catch (e) { showError(e.message); }
-}
-
-// --- Inventario ---
-async function loadInventory() {
-  const tenant = document.getElementById('inventario-tenant').value;
-  if (!tenant) return;
-  document.getElementById('inventory-software-detail').style.display = 'none';
-  try {
-    const hosts = await api('/_authgate/dashboard/inventory?tenant=' + encodeURIComponent(tenant));
-    const tbody = document.querySelector('#inventory-table tbody');
-    tbody.innerHTML = '';
-    document.getElementById('inventory-empty').style.display = hosts.length ? 'none' : 'block';
-    hosts.forEach(h => {
-      const os = (h.os || {}).name || '?';
-      const cpu = h.cpu ? `${h.cpu.model} (${h.cpu.cores} core)` : '?';
-      const ram = h.memory ? `${(h.memory.total_mb / 1024).toFixed(1)} GB` : '?';
-      const disk = (h.disks && h.disks[0]) ? `${h.disks[0].used_gb} / ${h.disks[0].total_gb} GB` : '-';
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${h.hostname}</td><td>${os}</td><td>${cpu}</td><td>${ram}</td><td>${disk}</td>
-        <td><a href="#" onclick="showSoftware('${tenant}','${h.hostname}');return false;">${h.software_count || 0} pacchetti</a></td>
-        <td>${h.timestamp || ''}</td>`;
-      tbody.appendChild(tr);
-    });
-    showError('');
-  } catch (e) { showError(e.message); }
-}
-
-async function showSoftware(tenant, hostname) {
-  try {
-    const software = await api('/_authgate/dashboard/inventory/software?tenant=' + encodeURIComponent(tenant) + '&hostname=' + encodeURIComponent(hostname));
-    document.getElementById('inventory-software-title').textContent = `Software installato su ${hostname}`;
-    const tbody = document.querySelector('#inventory-software-table tbody');
-    tbody.innerHTML = '';
-    software.forEach(pkg => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${pkg.name}</td><td>${pkg.version || ''}</td>`;
-      tbody.appendChild(tr);
-    });
-    document.getElementById('inventory-software-detail').style.display = 'block';
   } catch (e) { showError(e.message); }
 }
 
