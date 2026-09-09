@@ -36,9 +36,12 @@ jobs:
           # servizio installa ma non parte mai (errore 1053), pur
           # funzionando in modalita' debug. Scoperto testando dal vivo
           # un'installazione reale.
-          $pySite = python -c "import site; print(site.getsitepackages()[0])"
-          $pywin32Dir = Join-Path $pySite "pywin32_system32"
+          $pywin32Dir = python -c "import win32api, os; print(os.path.join(os.path.dirname(os.path.dirname(win32api.__file__)), 'pywin32_system32'))"
           Write-Host "Cerco le DLL pywin32 in: $pywin32Dir"
+          if (!(Test-Path $pywin32Dir)) {
+            Write-Error "Cartella pywin32_system32 non trovata in: $pywin32Dir"
+            exit 1
+          }
           Get-ChildItem $pywin32Dir -Filter "*.dll"
 
           $addBinaryArgs = @()
