@@ -1,10 +1,13 @@
 """
-Recupera l'eseguibile Windows dell'agent (logplatform-agent.exe) dall'ultima
-Release GitHub del repo principale, per servirlo dal pannello. E' un
-binario UNICO uguale per tutti i tenant (a differenza del pacchetto
-tar.gz, specifico per cliente con i suoi certificati) - qui lo scarichiamo
-dall'API di GitHub usando un token con permesso di lettura sul repo (serve
-perche' il repo e' privato).
+Recupera lo ZIP con l'agent Windows (cartella completa PyInstaller
+--onedir: eseguibile + dipendenze) dall'ultima Release GitHub del repo
+principale, per servirlo dal pannello.
+
+NOTA: usiamo --onedir (non --onefile) perche' un singolo eseguibile
+autoestraente e' notoriamente inaffidabile per i SERVIZI Windows: la
+decompressione all'avvio puo' superare il timeout di 30s del Service
+Control Manager, causando l'errore 1053 "il servizio non ha risposto in
+tempo utile" - riscontrato testando dal vivo un'installazione reale.
 """
 import os
 
@@ -12,7 +15,7 @@ import requests
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")  # es. "StartappSrl/log-platform"
-EXE_ASSET_NAME = "logplatform-agent.exe"
+ZIP_ASSET_NAME = "logplatform-agent-windows.zip"
 
 _HDRS = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {GITHUB_TOKEN}"}
 
@@ -21,11 +24,10 @@ class GitHubReleaseError(Exception):
     pass
 
 
-def get_windows_exe_bytes() -> bytes:
-    """Scarica l'ultimo logplatform-agent.exe pubblicato come Release GitHub.
-    Solleva GitHubReleaseError con un messaggio chiaro se qualcosa non va
-    (repo non configurato, token mancante/scaduto, release non trovata,
-    asset non trovato)."""
+def get_windows_release_zip_bytes() -> bytes:
+    """Scarica l'ultimo logplatform-agent-windows.zip pubblicato come
+    Release GitHub (contiene la cartella completa dell'agent, non un
+    singolo .exe)."""
     if not GITHUB_TOKEN or not GITHUB_REPO:
         raise GitHubReleaseError("GITHUB_TOKEN o GITHUB_REPO non configurati su auth-service")
 
@@ -41,10 +43,10 @@ def get_windows_exe_bytes() -> bytes:
         raise GitHubReleaseError(f"GitHub releases/latest -> {resp.status_code}: {resp.text[:300]}")
 
     release = resp.json()
-    asset = next((a for a in release.get("assets", []) if a.get("name") == EXE_ASSET_NAME), None)
+    asset = next((a for a in release.get("assets", []) if a.get("name") == ZIP_ASSET_NAME), None)
     if not asset:
         raise GitHubReleaseError(
-            f"Nessun asset '{EXE_ASSET_NAME}' trovato nell'ultima release '{release.get('tag_name')}'. "
+            f"Nessun asset '{ZIP_ASSET_NAME}' trovato nell'ultima release '{release.get('tag_name')}'. "
             "La build Windows potrebbe non essere ancora stata pubblicata per questa versione."
         )
 

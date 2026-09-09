@@ -29,7 +29,7 @@ jobs:
       - name: Build eseguibile
         working-directory: agent
         run: |
-          pyinstaller --onefile --name logplatform-agent `
+          pyinstaller --onedir --name logplatform-agent `
             --hidden-import win32timezone `
             --hidden-import win32serviceutil `
             --hidden-import win32service `
@@ -37,28 +37,29 @@ jobs:
             --hidden-import servicemanager `
             agent_windows.py
 
-      - name: Verifica che l'eseguibile esista
+      - name: Verifica e comprimi la cartella risultante
         working-directory: agent
         run: |
-          if (!(Test-Path "dist\logplatform-agent.exe")) {
-            Write-Error "Build fallita: dist\logplatform-agent.exe non trovato"
+          if (!(Test-Path "dist\logplatform-agent\logplatform-agent.exe")) {
+            Write-Error "Build fallita: dist\logplatform-agent\logplatform-agent.exe non trovato"
             exit 1
           }
-          Write-Host "Eseguibile creato, dimensione:"
-          Get-Item "dist\logplatform-agent.exe" | Select-Object Length
+          Write-Host "Cartella creata, contenuto:"
+          Get-ChildItem "dist\logplatform-agent" | Select-Object Name, Length
+          Compress-Archive -Path "dist\logplatform-agent\*" -DestinationPath "dist\logplatform-agent-windows.zip"
 
       - name: Carica come artefatto della build
         uses: actions/upload-artifact@v4
         with:
           name: logplatform-agent-windows-${{ github.ref_name }}
-          path: agent/dist/logplatform-agent.exe
+          path: agent/dist/logplatform-agent-windows.zip
           retention-days: 90
 
       - name: Pubblica come Release (per il download dal pannello)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: agent/dist/logplatform-agent.exe
+          files: agent/dist/logplatform-agent-windows.zip
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

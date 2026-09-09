@@ -5,11 +5,11 @@ dalla CA interna, pronti da scaricare dal pannello.
 Due varianti:
   build_agent_package()             -> tar.gz con gli script Python
                                         (Linux, o Windows con Python installato)
-  build_agent_package_windows_exe() -> zip con l'eseguibile .exe (scaricato
-                                        dall'ultima Release GitHub) - stessa
-                                        configurazione/certificati del
-                                        tenant, cosi' resta tracciabile a
-                                        quale cliente appartiene.
+  build_agent_package_windows_exe() -> zip con l'intera cartella
+                                        dell'agent Windows (PyInstaller
+                                        --onedir, scaricata dall'ultima
+                                        Release GitHub) + certificato e
+                                        configurazione DI QUESTO TENANT.
 """
 import io
 import os
@@ -28,9 +28,6 @@ GELF_PORT = int(os.environ.get("GELF_PORT", "12201"))
 def _agent_ini_content_linux(tenant: str) -> str:
     return f"""[agent]
 tenant = {tenant}
-# Lascia vuoto/commentato per rilevare automaticamente l'hostname della
-# macchina su cui gira l'agent (comportamento di default). Scommenta e
-# personalizza solo se vuoi un nome diverso da quello di sistema.
 # hostname = nome-personalizzato
 graylog_host = {PUBLIC_DOMAIN}
 graylog_port = {GELF_PORT}
@@ -50,9 +47,6 @@ inventory_interval_hours = 24
 def _agent_ini_content_windows(tenant: str) -> str:
     return f"""[agent]
 tenant = {tenant}
-# Lascia vuoto/commentato per rilevare automaticamente l'hostname della
-# macchina su cui gira l'agent (comportamento di default). Scommenta e
-# personalizza solo se vuoi un nome diverso da quello di sistema.
 # hostname = nome-personalizzato
 graylog_host = {PUBLIC_DOMAIN}
 graylog_port = {GELF_PORT}
@@ -60,12 +54,7 @@ ca_cert = ca.pem
 client_cert = {tenant}.pem
 client_key = {tenant}-key.pem
 
-# Canali Event Log da monitorare. 'Application' e 'System' insieme sono
-# piuttosto rumorosi su molte macchine Windows: valuta di restringere a
-# uno solo, o di aggiungere filtri, prima di usarlo su molti client.
 event_logs = Application, System
-# Canale 'Security' per gli accessi (login/logoff): taggato automaticamente
-# come log di accesso amministrativo per la conservazione a norma.
 # admin_event_logs = Security
 
 local_archive_dir = C:\\ProgramData\\LogPlatformAgent\\archive
@@ -105,20 +94,29 @@ def build_agent_package(tenant: str) -> bytes:
 
 
 def build_agent_package_windows_exe(tenant: str) -> bytes:
-    """zip con l'eseguibile .exe (dall'ultima Release GitHub) + certificato
-    e configurazione DI QUESTO TENANT, con agent.ini gia' pronto per
-    Windows (event_logs, non log_files come su Linux)."""
+    """zip con la cartella completa dell'agent Windows (dall'ultima
+    Release GitHub, PyInstaller --onedir) + certificato e configurazione
+    DI QUESTO TENANT."""
     client_cert_pem, client_key_pem = ca_manager.issue_certificate(tenant, is_server=False)
     ca_pem = ca_manager.get_ca_cert_pem()
     agent_ini = _agent_ini_content_windows(tenant)
-    exe_bytes = github_release.get_windows_exe_bytes()
+    release_zip_bytes = github_release.get_windows_release_zip_bytes()
 
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(f"agent-{tenant}-windows/logplatform-agent.exe", exe_bytes)
-        zf.writestr(f"agent-{tenant}-windows/agent.ini", agent_ini)
-        zf.writestr(f"agent-{tenant}-windows/ca.pem", ca_pem)
-        zf.writestr(f"agent-{tenant}-windows/{tenant}.pem", client_cert_pem)
-        zf.writestr(f"agent-{tenant}-windows/{tenant}-key.pem", client_key_pem)
+    out_buf = io.BytesIO()
+    root = f"agent-{tenant}-windows"
+    with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as out_zip:
+        # Ricopia tutti i file della release (exe + dipendenze) dentro la
+        # stessa sottocartella del pacchetto finale
+        with zipfile.ZipFile(io.BytesIO(release_zip_bytes)) as release_zip:
+            for entry in release_zip.infolist():
+                if entry.is_dir():
+                    continue
+                data = release_zip.read(entry.filename)
+                out_zip.writestr(f"{root}/{entry.filename}", data)
 
-    return buf.getvalue()
+        out_zip.writestr(f"{root}/agent.ini", agent_ini)
+        out_zip.writestr(f"{root}/ca.pem", ca_pem)
+        out_zip.writestr(f"{root}/{tenant}.pem", client_cert_pem)
+        out_zip.writestr(f"{root}/{tenant}-key.pem", client_key_pem)
+
+    return out_buf.getvalue()
