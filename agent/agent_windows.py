@@ -345,4 +345,17 @@ class LogPlatformAgentService(win32serviceutil.ServiceFramework):
 
 
 if __name__ == "__main__":
-    win32serviceutil.HandleCommandLine(LogPlatformAgentService)
+    if len(sys.argv) == 1:
+        # Nessun argomento sulla riga di comando: e' cosi' che Windows
+        # avvia il processo quando il SERVIZIO parte da solo (non un
+        # essere umano che digita install/start/stop/debug) - in questo
+        # caso va agganciato direttamente al Service Control Dispatcher,
+        # NON passato a HandleCommandLine (pensato per l'uso interattivo).
+        # Senza questa distinzione, il servizio si installa ma non parte
+        # mai (errore 1053) quando l'exe e' costruito con PyInstaller -
+        # confermato testando dal vivo su un PC Windows reale.
+        servicemanager.Initialize()
+        servicemanager.PrepareToHostSingle(LogPlatformAgentService)
+        servicemanager.StartServiceCtrlDispatcher()
+    else:
+        win32serviceutil.HandleCommandLine(LogPlatformAgentService)
