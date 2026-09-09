@@ -81,12 +81,18 @@ def search(stream_id: str, query: str = "*", range_minutes: int = 60, limit: int
     inviato il messaggio si chiama 'source' nella risposta di Graylog, NON
     'host' (che pure e' il nome del campo GELF originale) - scoperto
     testando dal vivo, entrambe le cose non erano ovvie/documentate in
-    modo chiaro."""
+    modo chiaro.
+
+    IMPORTANTE: il filtro per stream su questo endpoint NON si passa con
+    un parametro 'streams' (viene ignorato silenziosamente, senza errore
+    - bug serio scoperto testando dal vivo con due tenant reali: le
+    ricerche restituivano i dati di TUTTI i tenant, non solo di quello
+    richiesto). Il parametro giusto e' 'filter=streams:<ID>'."""
     return _request("GET", "/api/search/universal/relative", params={
         "query": query or "*",
         "range": range_minutes * 60,
         "limit": limit,
-        "streams": stream_id,
+        "filter": f"streams:{stream_id}",
         "sort": "timestamp:desc",
         "fields": "timestamp,message,full_message,source",
     })
