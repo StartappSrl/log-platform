@@ -28,13 +28,32 @@ jobs:
 
       - name: Build eseguibile
         working-directory: agent
+        shell: pwsh
         run: |
+          # pywintypes*.dll e pythoncom*.dll sono caricate dinamicamente da
+          # pywin32 (non tramite import normale), quindi PyInstaller non le
+          # rileva da solo - vanno aggiunte esplicitamente, altrimenti il
+          # servizio installa ma non parte mai (errore 1053), pur
+          # funzionando in modalita' debug. Scoperto testando dal vivo
+          # un'installazione reale.
+          $pySite = python -c "import site; print(site.getsitepackages()[0])"
+          $pywin32Dir = Join-Path $pySite "pywin32_system32"
+          Write-Host "Cerco le DLL pywin32 in: $pywin32Dir"
+          Get-ChildItem $pywin32Dir -Filter "*.dll"
+
+          $addBinaryArgs = @()
+          foreach ($dll in Get-ChildItem $pywin32Dir -Filter "*.dll") {
+            $addBinaryArgs += "--add-binary"
+            $addBinaryArgs += "$($dll.FullName);."
+          }
+
           pyinstaller --onedir --name logplatform-agent `
             --hidden-import win32timezone `
             --hidden-import win32serviceutil `
             --hidden-import win32service `
             --hidden-import win32event `
             --hidden-import servicemanager `
+            @addBinaryArgs `
             agent_windows.py
 
       - name: Verifica e comprimi la cartella risultante
