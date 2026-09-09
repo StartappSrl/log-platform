@@ -282,3 +282,31 @@ def download_agent_package_windows(tenant_name):
         as_attachment=True,
         download_name=f"agent-{tenant_name}-windows.zip",
     )
+# --- Da aggiungere a app/dashboard.py (in fondo al file) ---
+
+from . import inventory_pdf
+
+
+@dash.get("/inventory/export")
+@login_required
+def export_inventory_pdf():
+    tenant_name = request.args.get("tenant") or g.current_user.tenant
+    hostname = request.args.get("hostname")
+    if not tenant_name or not hostname:
+        return jsonify(error="specifica tenant e hostname"), 400
+    t = _tenant_or_403(tenant_name)
+    if not t:
+        return jsonify(error="tenant non trovato o non autorizzato"), 403
+
+    try:
+        inventory = gl.get_full_inventory_for_host(t.graylog_stream_id, hostname)
+        pdf_bytes = inventory_pdf.build_inventory_pdf(inventory, tenant_name, hostname)
+    except gl.GraylogError as e:
+        return jsonify(error=f"errore Graylog: {e}"), 502
+
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"inventario-{tenant_name}-{hostname}.pdf",
+    )

@@ -209,3 +209,18 @@ def get_inventory_software_for_host(stream_id: str, hostname: str, range_hours: 
     except (ValueError, TypeError):
         return []
     return inv.get("software", [])
+
+
+def get_full_inventory_for_host(stream_id: str, hostname: str, range_hours: int = 192) -> dict:
+    """Ritorna l'inventario COMPLETO (non solo il software) per un singolo
+    host - usato per l'export PDF di un endpoint."""
+    query = f'log_class:inventory AND source:"{hostname}"'
+    result = search(stream_id, query=query, range_minutes=range_hours * 60, limit=1)
+    messages = result.get("messages", [])
+    if not messages:
+        return {}
+    m = messages[0].get("message", messages[0])
+    try:
+        return json.loads(m.get("full_message", "{}"))
+    except (ValueError, TypeError):
+        return {}

@@ -199,7 +199,7 @@
     <table id="inventory-table">
       <thead><tr>
         <th>Host</th><th>Sistema operativo</th><th>CPU</th><th>RAM</th>
-        <th>Disco (usato/totale)</th><th>Software</th><th>Ultimo aggiornamento</th><th>Esporta</th>
+        <th>Disco (usato/totale)</th><th>Software</th><th>Ultimo aggiornamento</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -438,8 +438,7 @@ async function loadInventory() {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>${h.hostname}</td><td>${os}</td><td>${cpu}</td><td>${ram}</td><td>${disk}</td>
         <td><a href="#" onclick="showSoftware('${tenant}','${h.hostname}');return false;">${h.software_count || 0} pacchetti</a></td>
-        <td>${h.timestamp || ''}</td>
-        <td><a href="/_authgate/dashboard/inventory/export?tenant=${tenant}&hostname=${h.hostname}">PDF</a></td>`;
+        <td>${h.timestamp || ''}</td>`;
       tbody.appendChild(tr);
     });
     showError('');
