@@ -12,6 +12,7 @@ rotte.
 from flask import Blueprint, jsonify, request
 
 from . import ca_manager
+from . import cert_ledger
 
 setup_bp = Blueprint("setup", __name__, url_prefix="/_authgate/setup")
 
@@ -39,5 +40,5 @@ def issue_server_cert():
     if not common_name:
         return jsonify(error="common_name mancante"), 400
 
-    cert_pem, key_pem = ca_manager.issue_certificate(common_name, is_server=True, dns_names=dns_names)
+    cert_pem, key_pem = cert_ledger.issue_and_record_certificate(common_name, is_server=True, dns_names=dns_names)
     return jsonify(cert_pem=cert_pem, key_pem=key_pem, ca_pem=ca_manager.get_ca_cert_pem())

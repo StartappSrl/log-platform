@@ -57,7 +57,6 @@
   <button data-panel="allarmi" onclick="showPanel('allarmi')">Allarmi</button>
   <button data-panel="notifiche" onclick="showPanel('notifiche')">Notifiche</button>
   <button data-panel="inventario" onclick="showPanel('inventario')">Inventario</button>
-  <button data-panel="certificati" onclick="showPanel('certificati')">Certificati</button>
 </nav>
 
 <main>
@@ -215,21 +214,6 @@
     </div>
   </section>
 
-
-  <section class="panel" id="panel-certificati">
-    <div class="row">
-      <a href="/_authgate/dashboard/certificates/crl" class="primary" style="text-decoration:none;padding:.4em 1em;border-radius:4px">Scarica CRL</a>
-      <button onclick="loadCertificates()">Aggiorna</button>
-    </div>
-    <table id="certificates-table">
-      <thead><tr>
-        <th>Nome</th><th>Tipo</th><th>Emesso il</th><th>Stato</th><th>Azione</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table>
-    <div class="empty" id="certificates-empty" style="display:none">Nessun certificato emesso ancora.</div>
-  </section>
-
 </main>
 
 <script>
@@ -280,7 +264,6 @@ function showPanel(name) {
   if (name === 'allarmi') { loadTenantOptions('allarme-tenant'); loadNotificationsForCheckboxes(); loadAlarms(); }
   if (name === 'notifiche') { loadTenantOptions('notifica-tenant'); loadNotifications(); }
   if (name === 'inventario') { loadTenantOptions('inventario-tenant').then(loadInventory); }
-  if (name === 'certificati') { loadCertificates(); }
 }
 
 // --- Chi sono ---
@@ -493,34 +476,6 @@ async function showSoftware(tenant, hostname) {
       tbody.appendChild(tr);
     });
     document.getElementById('inventory-software-detail').style.display = 'block';
-  } catch (e) { showError(e.message); }
-}
-
-// --- Certificati ---
-async function loadCertificates() {
-  try {
-    const certs = await api('/_authgate/dashboard/certificates');
-    const tbody = document.querySelector('#certificates-table tbody');
-    tbody.innerHTML = '';
-    document.getElementById('certificates-empty').style.display = certs.length ? 'none' : 'block';
-    certs.forEach(c => {
-      const tr = document.createElement('tr');
-      const tipo = c.is_server ? 'Server (Graylog)' : 'Client (agent)';
-      const stato = c.revoked ? `Revocato il ${c.revoked_at || ''}` : 'Attivo';
-      const azione = c.revoked ? '-' :
-        `<a href="#" onclick="revokeCertificate('${c.serial_number}');return false;">Revoca</a>`;
-      tr.innerHTML = `<td>${c.common_name}</td><td>${tipo}</td><td>${c.issued_at || ''}</td><td>${stato}</td><td>${azione}</td>`;
-      tbody.appendChild(tr);
-    });
-    showError('');
-  } catch (e) { showError(e.message); }
-}
-
-async function revokeCertificate(serial) {
-  if (!confirm('Revocare questo certificato? Segna il certificato come non valido nei registri (vedi nota nel pannello sui limiti di enforcement).')) return;
-  try {
-    await api(`/_authgate/dashboard/certificates/${serial}/revoke`, { method: 'POST' });
-    loadCertificates();
   } catch (e) { showError(e.message); }
 }
 

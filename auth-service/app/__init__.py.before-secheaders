@@ -1,7 +1,6 @@
 import os
 
 from flask import Flask
-from .security_headers import apply_security_headers
 
 from .models import db
 
@@ -16,7 +15,6 @@ def create_app() -> Flask:
     app.config["SESSION_LIFETIME_MINUTES"] = os.environ.get("SESSION_LIFETIME_MINUTES", "480")
 
     db.init_app(app)
-    app.after_request(apply_security_headers)
 
     from .routes import bp
     app.register_blueprint(bp)

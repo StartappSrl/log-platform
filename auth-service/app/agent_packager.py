@@ -18,6 +18,7 @@ import zipfile
 from pathlib import Path
 
 from . import ca_manager
+from . import cert_ledger
 from . import github_release
 
 AGENT_TEMPLATES_DIR = Path(os.environ.get("AGENT_TEMPLATES_DIR", "/agent_templates"))
@@ -66,7 +67,7 @@ inventory_interval_hours = 24
 
 def build_agent_package(tenant: str) -> bytes:
     """tar.gz con gli script Python (Linux, o Windows con Python+pywin32)."""
-    client_cert_pem, client_key_pem = ca_manager.issue_certificate(tenant, is_server=False)
+    client_cert_pem, client_key_pem = cert_ledger.issue_and_record_certificate(tenant, is_server=False)
     ca_pem = ca_manager.get_ca_cert_pem()
     agent_ini = _agent_ini_content_linux(tenant)
 
@@ -97,7 +98,7 @@ def build_agent_package_windows_exe(tenant: str) -> bytes:
     """zip con la cartella completa dell'agent Windows (dall'ultima
     Release GitHub, PyInstaller --onedir) + certificato e configurazione
     DI QUESTO TENANT."""
-    client_cert_pem, client_key_pem = ca_manager.issue_certificate(tenant, is_server=False)
+    client_cert_pem, client_key_pem = cert_ledger.issue_and_record_certificate(tenant, is_server=False)
     ca_pem = ca_manager.get_ca_cert_pem()
     agent_ini = _agent_ini_content_windows(tenant)
     release_zip_bytes = github_release.get_windows_release_zip_bytes()

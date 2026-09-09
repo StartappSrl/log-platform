@@ -66,20 +66,12 @@ def verify_mfa():
     data = request.get_json(force=True, silent=True) or {}
     username = (data.get("username") or "").strip()
     code = (data.get("code") or "").strip()
-    ip = request.headers.get("X-Real-IP", request.remote_addr)
-
-    if _too_many_failed_attempts(username, ip):
-        return jsonify(error="troppi tentativi falliti, riprova pi\u00f9 tardi"), 429
 
     user = User.query.filter_by(username=username, is_active=True).first()
     if not user:
-        db.session.add(FailedLogin(username=username, ip=ip))
-        db.session.commit()
         return jsonify(error="utente non valido"), 401
 
     if not verify_code(user.totp_secret, code):
-        db.session.add(FailedLogin(username=username, ip=ip))
-        db.session.commit()
         return jsonify(error="codice MFA non valido"), 401
 
     if not user.mfa_confirmed:

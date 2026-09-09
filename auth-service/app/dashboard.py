@@ -62,6 +62,7 @@ def list_tenants():
 
 @dash.post("/tenants")
 @admin_required
+@csrf_protect
 def create_tenant_route():
     data = request.get_json(force=True, silent=True) or {}
     name = (data.get("name") or "").strip().lower()
@@ -132,6 +133,7 @@ def list_alarms_route():
 
 @dash.post("/alarms")
 @login_required
+@csrf_protect
 def create_alarm_route():
     data = request.get_json(force=True, silent=True) or {}
     tenant_name = data.get("tenant") or g.current_user.tenant
@@ -177,6 +179,7 @@ def list_notifications_route():
 
 @dash.post("/notifications")
 @login_required
+@csrf_protect
 def create_notification_route():
     data = request.get_json(force=True, silent=True) or {}
     tenant_name = data.get("tenant") or g.current_user.tenant
@@ -310,3 +313,42 @@ def export_inventory_pdf():
         as_attachment=True,
         download_name=f"inventario-{tenant_name}-{hostname}.pdf",
     )
+# --- Da aggiungere a app/dashboard.py (in fondo al file) ---
+
+from flask import Response
+
+from . import cert_ledger
+from .csrf import csrf_protect, generate_csrf_token
+
+
+@dash.get("/csrf-token")
+@login_required
+def get_csrf_token():
+    return jsonify(csrf_token=generate_csrf_token(g.current_user.username))
+
+
+@dash.get("/certificates")
+@admin_required
+def list_certificates_route():
+    return jsonify(cert_ledger.list_issued_certificates())
+
+
+@dash.post("/certificates/<serial_number>/revoke")
+@admin_required
+@csrf_protect
+def revoke_certificate_route(serial_number):
+    ok = cert_ledger.revoke_certificate(serial_number)
+    if not ok:
+        return jsonify(error="seriale non trovato o gia' revocato"), 404
+    return jsonify(ok=True)
+
+
+@dash.get("/certificates/crl")
+@login_required
+def download_crl_route():
+    """La CRL in se' non e' un segreto (contiene solo seriali revocati,
+    nessuna chiave privata) - la lascio raggiungibile da qualunque utente
+    autenticato, utile anche per un eventuale proxy/script esterno che la
+    scarichi periodicamente."""
+    crl_pem = cert_ledger.generate_crl_pem()
+    return Response(crl_pem, mimetype="application/pkix-crl")
