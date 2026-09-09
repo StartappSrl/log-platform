@@ -5,6 +5,7 @@ automaticamente lo scoping per tenant: un utente non-admin (tenant != None)
 vede e agisce SOLO sul proprio tenant.
 """
 from functools import wraps
+from .csrf import csrf_protect, generate_csrf_token
 
 from flask import Blueprint, jsonify, request, g
 
@@ -318,7 +319,6 @@ def export_inventory_pdf():
 from flask import Response
 
 from . import cert_ledger
-from .csrf import csrf_protect, generate_csrf_token
 
 
 @dash.get("/csrf-token")
