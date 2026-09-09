@@ -40,6 +40,18 @@ import threading
 import time
 from pathlib import Path
 
+# Quando gira come .exe (PyInstaller --onedir), le DLL pywintypes/pythoncom
+# finiscono in una sottocartella (_internal/pywin32_system32) che Windows
+# non cerca sempre da solo quando il processo parte come SERVIZIO (a
+# differenza della modalita' normale/debug, dove di solito funziona senza
+# problemi) - va detto esplicitamente PRIMA di importare i moduli pywin32,
+# altrimenti il servizio si installa ma non parte mai (errore 1053).
+# Scoperto testando dal vivo un'installazione reale.
+if getattr(sys, "frozen", False):
+    _dll_dir = os.path.join(os.path.dirname(sys.executable), "_internal", "pywin32_system32")
+    if os.path.isdir(_dll_dir):
+        os.add_dll_directory(_dll_dir)
+
 import servicemanager
 import win32event
 import win32evtlog
