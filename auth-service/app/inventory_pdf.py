@@ -4,15 +4,24 @@ operativo, rete, software installato) di un singolo endpoint - pensata
 per essere condivisa con il cliente, non solo consultata a video.
 """
 import io
+import os
 from datetime import datetime
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak,
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image,
 )
+
+# Loghi inclusi nell'immagine Docker (vedi Dockerfile: COPY logos /logos).
+# Se mancano (es. in un test locale), l'intestazione viene semplicemente
+# omessa invece di far fallire la generazione del PDF.
+LOGOS_DIR = Path(os.environ.get("LOGOS_DIR", "/logos"))
+STARTAPP_LOGO = LOGOS_DIR / "startapp-logo.png"
+DEFENDIA_LOGO = LOGOS_DIR / "defendia-logo.png"
 
 
 def _fmt_gb(value) -> str:
@@ -37,6 +46,26 @@ def build_inventory_pdf(inventory: dict, tenant: str, hostname: str) -> bytes:
                                     spaceBefore=16, spaceAfter=8)
 
     story = []
+
+    if STARTAPP_LOGO.exists() and DEFENDIA_LOGO.exists():
+        logo_height = 1.1 * cm
+        startapp_img = Image(str(STARTAPP_LOGO), height=logo_height,
+                              width=logo_height * (2000 / 470))
+        defendia_img = Image(str(DEFENDIA_LOGO), height=logo_height,
+                              width=logo_height * (2087 / 589))
+        header_table = Table(
+            [[startapp_img, defendia_img]],
+            colWidths=[8 * cm, 8 * cm],
+        )
+        header_table.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (0, 0), "LEFT"),
+            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        story.append(header_table)
+        story.append(Spacer(1, 0.6 * cm))
 
     story.append(Paragraph(f"Scheda inventario — {hostname}", title_style))
     generato_il = datetime.now().strftime("%d/%m/%Y %H:%M")

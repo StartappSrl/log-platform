@@ -5,22 +5,29 @@
 <title>Log Platform — Login</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background:#0f172a; color:#e2e8f0;
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background:#f1f5f9; color:#1e293b;
          display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
-  .card { background:#1e293b; padding:2rem 2.5rem; border-radius:12px; width:320px; box-shadow:0 10px 30px rgba(0,0,0,.4); }
+  .card { background:#ffffff; padding:2rem 2.5rem; border-radius:12px; width:360px;
+          box-shadow:0 10px 30px rgba(15,23,42,.12); border:1px solid #e2e8f0; }
+  .logos { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; }
+  .logos img { height:28px; width:auto; display:block; }
   h1 { font-size:1.2rem; margin-bottom:1.2rem; }
-  input { width:100%; padding:.6rem; margin:.4rem 0 1rem; border-radius:6px; border:1px solid #334155;
-          background:#0f172a; color:#e2e8f0; box-sizing:border-box; }
+  input { width:100%; padding:.6rem; margin:.4rem 0 1rem; border-radius:6px; border:1px solid #cbd5e1;
+          background:#f8fafc; color:#1e293b; box-sizing:border-box; }
   button { width:100%; padding:.65rem; border:none; border-radius:6px; background:#3b82f6; color:white;
            font-weight:600; cursor:pointer; }
   button:hover { background:#2563eb; }
-  .error { color:#f87171; font-size:.85rem; margin-bottom:.5rem; min-height:1.2em; }
-  img.qr { display:block; margin:0 auto 1rem; background:white; padding:8px; border-radius:8px; }
-  .hint { font-size:.8rem; color:#94a3b8; margin-bottom:1rem; }
+  .error { color:#dc2626; font-size:.85rem; margin-bottom:.5rem; min-height:1.2em; }
+  img.qr { display:block; margin:0 auto 1rem; background:white; padding:8px; border-radius:8px; border:1px solid #e2e8f0; }
+  .hint { font-size:.8rem; color:#64748b; margin-bottom:1rem; }
 </style>
 </head>
 <body>
 <div class="card">
+  <div class="logos">
+    <img src="/startapp-logo.png" alt="StartApp">
+    <img src="/defendia-logo.png" alt="Defendia">
+  </div>
   <h1>Log Platform</h1>
   <div class="error" id="error"></div>
 

@@ -20,6 +20,14 @@ http {
             root /usr/share/nginx/html;
         }
 
+        location = /startapp-logo.png {
+            root /usr/share/nginx/html;
+        }
+
+        location = /defendia-logo.png {
+            root /usr/share/nginx/html;
+        }
+
         location /_authgate/ {
             proxy_pass http://auth_upstream/_authgate/;
             proxy_set_header X-Real-IP $remote_addr;
