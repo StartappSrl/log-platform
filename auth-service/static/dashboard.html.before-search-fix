@@ -362,8 +362,8 @@ async function runSearch() {
     document.getElementById('search-empty').style.display = messages.length ? 'none' : 'block';
     messages.forEach(m => {
       const tr = document.createElement('tr');
-      const ts = m.timestamp ? new Date(m.timestamp).toLocaleString() : '';
-      const host = m.source || '';
+      const ts = m.timestamp || '';
+      const host = m.host || '';
       const text = (m.message || '').toString();
       tr.innerHTML = `<td>${ts}</td><td>${host}</td><td class="msg-cell" title="${text.replace(/"/g, '&quot;')}">${text}</td>`;
       tbody.appendChild(tr);
