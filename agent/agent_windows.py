@@ -246,6 +246,8 @@ def load_config(config_path: Path):
         "local_archive_tsa_password": s.get("local_archive_tsa_password", "").strip() or None,
         "local_archive_tsa_client_cert": s.get("local_archive_tsa_client_cert", "").strip() or None,
         "local_archive_tsa_client_key": s.get("local_archive_tsa_client_key", "").strip() or None,
+        "local_archive_upload_url": s.get("local_archive_upload_url", "").strip() or None,
+        "local_archive_upload_token": s.get("local_archive_upload_token", "").strip() or None,
         "inventory_interval_hours": s.getfloat("inventory_interval_hours", 24),
     }
 
@@ -260,6 +262,8 @@ def _make_archiver(source_id: str, config: dict) -> LocalArchiver | None:
         tsa_password=config["local_archive_tsa_password"],
         tsa_client_cert=config["local_archive_tsa_client_cert"],
         tsa_client_key=config["local_archive_tsa_client_key"],
+        upload_url=config["local_archive_upload_url"],
+        upload_token=config["local_archive_upload_token"],
     )
 
 

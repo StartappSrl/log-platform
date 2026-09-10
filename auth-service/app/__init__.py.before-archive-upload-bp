@@ -23,8 +23,6 @@ def create_app() -> Flask:
 
     from .dashboard import dash
     app.register_blueprint(dash)
-    from .archive_upload_routes import archive_upload_bp
-    app.register_blueprint(archive_upload_bp)
 
     from .setup_routes import setup_bp
     app.register_blueprint(setup_bp)

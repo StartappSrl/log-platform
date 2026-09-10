@@ -40,6 +40,18 @@ import threading
 import time
 from pathlib import Path
 
+# Quando gira come .exe (PyInstaller --onedir), le DLL pywintypes/pythoncom
+# finiscono in una sottocartella (_internal/pywin32_system32) che Windows
+# non cerca sempre da solo quando il processo parte come SERVIZIO (a
+# differenza della modalita' normale/debug, dove di solito funziona senza
+# problemi) - va detto esplicitamente PRIMA di importare i moduli pywin32,
+# altrimenti il servizio si installa ma non parte mai (errore 1053).
+# Scoperto testando dal vivo un'installazione reale.
+if getattr(sys, "frozen", False):
+    _dll_dir = os.path.join(os.path.dirname(sys.executable), "_internal", "pywin32_system32")
+    if os.path.isdir(_dll_dir):
+        os.add_dll_directory(_dll_dir)
+
 import servicemanager
 import win32event
 import win32evtlog
@@ -50,7 +62,13 @@ from gelf_transport import build_gelf_message, connect
 from local_archive import LocalArchiver
 from inventory import build_inventory_gelf_message
 
-SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+# Quando l'agent gira come .exe (PyInstaller), __file__ punta a una
+# cartella temporanea di estrazione, NON alla cartella dove si trova
+# davvero il file .exe: in quel caso serve usare sys.executable invece.
+if getattr(sys, "frozen", False):
+    SCRIPT_DIR = Path(os.path.dirname(sys.executable))
+else:
+    SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 STATE_FILE = SCRIPT_DIR / "agent_state.json"
 
 
@@ -228,6 +246,8 @@ def load_config(config_path: Path):
         "local_archive_tsa_password": s.get("local_archive_tsa_password", "").strip() or None,
         "local_archive_tsa_client_cert": s.get("local_archive_tsa_client_cert", "").strip() or None,
         "local_archive_tsa_client_key": s.get("local_archive_tsa_client_key", "").strip() or None,
+        "local_archive_upload_url": s.get("local_archive_upload_url", "").strip() or None,
+        "local_archive_upload_token": s.get("local_archive_upload_token", "").strip() or None,
         "inventory_interval_hours": s.getfloat("inventory_interval_hours", 24),
     }
 
@@ -242,6 +262,8 @@ def _make_archiver(source_id: str, config: dict) -> LocalArchiver | None:
         tsa_password=config["local_archive_tsa_password"],
         tsa_client_cert=config["local_archive_tsa_client_cert"],
         tsa_client_key=config["local_archive_tsa_client_key"],
+        upload_url=config["local_archive_upload_url"],
+        upload_token=config["local_archive_upload_token"],
     )
 
 
@@ -327,4 +349,17 @@ class LogPlatformAgentService(win32serviceutil.ServiceFramework):
 
 
 if __name__ == "__main__":
-    win32serviceutil.HandleCommandLine(LogPlatformAgentService)
+    if len(sys.argv) == 1:
+        # Nessun argomento sulla riga di comando: e' cosi' che Windows
+        # avvia il processo quando il SERVIZIO parte da solo (non un
+        # essere umano che digita install/start/stop/debug) - in questo
+        # caso va agganciato direttamente al Service Control Dispatcher,
+        # NON passato a HandleCommandLine (pensato per l'uso interattivo).
+        # Senza questa distinzione, il servizio si installa ma non parte
+        # mai (errore 1053) quando l'exe e' costruito con PyInstaller -
+        # confermato testando dal vivo su un PC Windows reale.
+        servicemanager.Initialize()
+        servicemanager.PrepareToHostSingle(LogPlatformAgentService)
+        servicemanager.StartServiceCtrlDispatcher()
+    else:
+        win32serviceutil.HandleCommandLine(LogPlatformAgentService)

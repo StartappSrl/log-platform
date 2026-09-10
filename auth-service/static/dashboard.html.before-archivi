@@ -38,19 +38,6 @@
   .card-form { background:#ffffff; border:1px solid #e2e8f0; padding:1rem; border-radius:8px; margin-bottom:1.5rem; }
   .card-form h3 { margin-top:0; font-size:.95rem; }
   .checkbox-row { display:flex; align-items:center; gap:.4rem; font-size:.85rem; color:#475569; }
-  .device-row { display:flex; align-items:center; gap:1rem; padding:.75rem 1rem;
-                border:1px solid #e2e8f0; border-radius:8px; margin-bottom:.5rem; background:#ffffff; }
-  .device-status { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
-  .device-status.online { background:#22c55e; }
-  .device-status.offline { background:#ef4444; }
-  .device-name { flex:1; font-weight:600; font-size:.9rem; }
-  .device-badge { display:inline-flex; align-items:center; gap:.3rem; padding:.25rem .6rem;
-                  border-radius:5px; font-size:.8rem; font-weight:600; color:white; }
-  .device-badge.total { background:#64748b; }
-  .device-badge.errors { background:#dc2626; }
-  .device-badge.warnings { background:#d97706; }
-  .device-badge.ok { background:#16a34a; }
-  .device-lastseen { font-size:.75rem; color:#94a3b8; min-width:90px; text-align:right; }
 </style>
 </head>
 <body>
@@ -65,14 +52,12 @@
 </header>
 
 <nav>
-  <button data-panel="dashboard" onclick="showPanel('dashboard')">Dashboard</button>
   <button data-panel="clienti" id="nav-clienti" onclick="showPanel('clienti')">Clienti</button>
   <button data-panel="ricerca" onclick="showPanel('ricerca')">Ricerca</button>
   <button data-panel="allarmi" onclick="showPanel('allarmi')">Allarmi</button>
   <button data-panel="notifiche" onclick="showPanel('notifiche')">Notifiche</button>
   <button data-panel="inventario" onclick="showPanel('inventario')">Inventario</button>
   <button data-panel="certificati" onclick="showPanel('certificati')">Certificati</button>
-  <button data-panel="archivi" onclick="showPanel('archivi')">Archivi</button>
 </nav>
 
 <main>
@@ -245,39 +230,6 @@
     <div class="empty" id="certificates-empty" style="display:none">Nessun certificato emesso ancora.</div>
   </section>
 
-
-  <section class="panel" id="panel-archivi">
-    <div class="row">
-      <div id="archivi-tenant-wrap">
-        <label>Cliente</label>
-        <select id="archivi-tenant"></select>
-      </div>
-      <button onclick="loadArchivi()">Aggiorna</button>
-    </div>
-    <table id="archivi-table">
-      <thead><tr>
-        <th>Host</th><th>Sorgente</th><th>Giorni disponibili</th>
-        <th>Dal</th><th>Al</th><th>Con marca temporale</th><th>Azione</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table>
-    <div class="empty" id="archivi-empty" style="display:none">Nessun archivio caricato ancora per questo cliente.</div>
-  </section>
-
-
-  <section class="panel" id="panel-dashboard">
-    <div class="row">
-      <div id="dashboard-tenant-wrap">
-        <label>Cliente</label>
-        <select id="dashboard-tenant"></select>
-      </div>
-      <button onclick="loadDeviceDashboard()">Aggiorna</button>
-    </div>
-    <div id="dashboard-summary" style="margin-bottom:1rem;color:#64748b;font-size:.9rem"></div>
-    <div id="dashboard-devices"></div>
-    <div class="empty" id="dashboard-empty" style="display:none">Nessun dispositivo ha inviato log nelle ultime 24 ore per questo cliente.</div>
-  </section>
-
 </main>
 
 <script>
@@ -318,7 +270,6 @@ function logout() {
 }
 
 function showPanel(name) {
-  if (name === 'dashboard') { loadTenantOptions('dashboard-tenant').then(loadDeviceDashboard); }
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
@@ -330,7 +281,6 @@ function showPanel(name) {
   if (name === 'notifiche') { loadTenantOptions('notifica-tenant'); loadNotifications(); }
   if (name === 'inventario') { loadTenantOptions('inventario-tenant').then(loadInventory); }
   if (name === 'certificati') { loadCertificates(); }
-  if (name === 'archivi') { loadTenantOptions('archivi-tenant').then(loadArchivi); }
 }
 
 // --- Chi sono ---
@@ -574,61 +524,8 @@ async function revokeCertificate(serial) {
   } catch (e) { showError(e.message); }
 }
 
-// --- Archivi ---
-async function loadArchivi() {
-  const tenant = document.getElementById('archivi-tenant').value;
-  if (!tenant) return;
-  try {
-    const archivi = await api('/_authgate/dashboard/archives?tenant=' + encodeURIComponent(tenant));
-    const tbody = document.querySelector('#archivi-table tbody');
-    tbody.innerHTML = '';
-    document.getElementById('archivi-empty').style.display = archivi.length ? 'none' : 'block';
-    archivi.forEach(a => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${a.hostname}</td><td>${a.source_id}</td><td>${a.total_days}</td>
-        <td>${a.first_day}</td><td>${a.last_day}</td><td>${a.days_with_tsr} / ${a.total_days}</td>
-        <td><a href="/_authgate/dashboard/archives/download?tenant=${encodeURIComponent(tenant)}&hostname=${encodeURIComponent(a.hostname)}&source_id=${encodeURIComponent(a.source_id)}">Scarica ZIP</a></td>`;
-      tbody.appendChild(tr);
-    });
-    showError('');
-  } catch (e) { showError(e.message); }
-}
-
-// --- Dashboard dispositivi ---
-async function loadDeviceDashboard() {
-  const tenant = document.getElementById('dashboard-tenant').value;
-  if (!tenant) return;
-  try {
-    const data = await api('/_authgate/dashboard/device-dashboard?tenant=' + encodeURIComponent(tenant));
-    const devices = data.devices || [];
-    document.getElementById('dashboard-summary').textContent =
-      `Log ricevuti nelle ultime 24 ore: ${data.total_messages_today} — ${devices.length} dispositivi`;
-    const container = document.getElementById('dashboard-devices');
-    container.innerHTML = '';
-    document.getElementById('dashboard-empty').style.display = devices.length ? 'none' : 'block';
-    devices.forEach(d => {
-      const row = document.createElement('div');
-      row.className = 'device-row';
-      const statusClass = d.online ? 'online' : 'offline';
-      const lastSeen = d.last_seen ? new Date(d.last_seen).toLocaleString() : '-';
-      row.innerHTML = `
-        <div class="device-status ${statusClass}" title="${d.online ? 'Online' : 'Offline'}"></div>
-        <div class="device-name">${d.hostname}</div>
-        <span class="device-badge total">${d.total}</span>
-        <span class="device-badge errors">${d.errors}</span>
-        <span class="device-badge warnings">${d.warnings}</span>
-        <span class="device-badge ok">${d.ok}</span>
-        <div class="device-lastseen">${lastSeen}</div>
-      `;
-      container.appendChild(row);
-    });
-    showError('');
-  } catch (e) { showError(e.message); }
-}
-
 // --- Avvio ---
-
-loadWhoAmI().then(() => showPanel('dashboard')).catch(() => { window.location.href = '/login.html'; });
+loadWhoAmI().catch(() => { window.location.href = '/login.html'; });
 
 // Ricarica gli allarmi quando cambia il cliente selezionato
 document.addEventListener('DOMContentLoaded', () => {

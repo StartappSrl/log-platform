@@ -20,6 +20,7 @@ from pathlib import Path
 from . import ca_manager
 from . import cert_ledger
 from . import github_release
+from . import archive_storage
 
 AGENT_TEMPLATES_DIR = Path(os.environ.get("AGENT_TEMPLATES_DIR", "/agent_templates"))
 PUBLIC_DOMAIN = os.environ.get("PUBLIC_DOMAIN", "logs.tuodominio.it")
@@ -27,6 +28,7 @@ GELF_PORT = int(os.environ.get("GELF_PORT", "12201"))
 
 
 def _agent_ini_content_linux(tenant: str) -> str:
+    upload_token = archive_storage.get_or_create_upload_token(tenant)
     return f"""[agent]
 tenant = {tenant}
 # hostname = nome-personalizzato
@@ -40,12 +42,17 @@ log_files = /var/log/syslog
 
 local_archive_dir = /var/lib/logplatform-agent/archive
 # local_archive_tsa_url =
+# Carica anche una copia sul portale (scheda Archivi), oltre a quella
+# locale - lascia vuoto per disattivare (resta solo in locale).
+local_archive_upload_url = https://{PUBLIC_DOMAIN}/_authgate/archive-upload
+local_archive_upload_token = {upload_token}
 
 inventory_interval_hours = 24
 """
 
 
 def _agent_ini_content_windows(tenant: str) -> str:
+    upload_token = archive_storage.get_or_create_upload_token(tenant)
     return f"""[agent]
 tenant = {tenant}
 # hostname = nome-personalizzato
@@ -60,6 +67,8 @@ event_logs = Application, System
 
 local_archive_dir = C:\\ProgramData\\LogPlatformAgent\\archive
 # local_archive_tsa_url =
+local_archive_upload_url = https://{PUBLIC_DOMAIN}/_authgate/archive-upload
+local_archive_upload_token = {upload_token}
 
 inventory_interval_hours = 24
 """

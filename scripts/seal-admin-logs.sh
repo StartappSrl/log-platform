@@ -1,103 +1,142 @@
 #!/usr/bin/env bash
-# Sigilla quotidianamente i log di accesso amministratori di un tenant, per
-# soddisfare il requisito di NON ALTERABILITÀ del Provvedimento Garante
-# Privacy 27/11/2008 (la retention lunga da sola, vedi
-# provision-admin-log-stream.sh, copre solo la DURATA, non l'integrità).
+# Sigilla (esporta + comprime + hash chain + marca temporale) i log di
+# accesso amministratori (log_class=admin-access) di TUTTI i tenant in
+# un'unica operazione centralizzata - una sola marca temporale invece di
+# una per ogni singolo endpoint/cliente.
 #
-# Meccanismo:
-#  1. Esporta da OpenSearch tutti i documenti dell'indice del giorno
-#     precedente per lo stream admin-access del tenant.
-#  2. Calcola lo SHA-256 dell'export.
-#  3. Concatena all'hash del giorno precedente (hash chain): se un giorno
-#     qualunque viene alterato a posteriori, la catena si rompe e si vede.
-#  4. Se configurata una TSA (Time Stamping Authority, RFC 3161), chiede una
-#     marca temporale sull'hash della catena: prova indipendente, verificabile
-#     da terzi, che quell'hash esisteva già a quella data. Supporta TSA con
-#     autenticazione Basic Auth o certificato client (es. Namirial e altri
-#     fornitori qualificati eIDAS a pagamento), configurabile in .env.
-#  5. Rende i file immutabili a livello filesystem (chattr +i, se disponibile).
+# Pensato per girare via cron DIRETTAMENTE SUL NODO NS8 (non dentro un
+# container), con accesso a Graylog sulla sua porta locale.
 #
-# LIMITE ONESTO: chattr +i può essere rimosso da chi ha accesso root alla
-# macchina — non è WORM hardware. La protezione reale contro un
-# amministratore malintenzionato viene dalla combinazione hash-chain +
-# marca temporale ESTERNA (fuori dal tuo controllo), non dal solo flag
-# immutabile. Per un valore probatorio più forte, valuta una TSA qualificata
-# a pagamento invece di quella di default (gratuita, best-effort).
+# Per la sigillatura quindicinale (2 volte al mese, invece che ogni
+# giorno): pianifica via cron il giorno 1 e il giorno 16 di ogni mese,
+# con SEAL_RANGE_HOURS=360 (15 giorni) - vedi il crontab di esempio in
+# fondo a questo file.
 #
-# Pensato per cron giornaliero (dopo la mezzanotte, quando l'indice del
-# giorno prima è "chiuso"):
-#   15 1 * * * /percorso/scripts/seal-admin-logs.sh acme >> /var/log/logplatform-seal.log 2>&1
+# Configurazione (variabili d'ambiente, es. da un file sourcing prima
+# della chiamata):
+#   GRAYLOG_URL              es. http://127.0.0.1:20004
+#   GRAYLOG_API_USER
+#   GRAYLOG_API_PASSWORD
+#   SEAL_STATE_DIR           default /var/lib/logplatform-seal
+#   SEAL_RANGE_HOURS         default 24 (ore indietro da esportare)
+#   ADMIN_LOG_TSA_URL        se assente, sigilla solo con hash chain
+#   ADMIN_LOG_TSA_USER / ADMIN_LOG_TSA_PASSWORD
+#   ADMIN_LOG_TSA_CLIENT_CERT / ADMIN_LOG_TSA_CLIENT_KEY   (alternativa)
 #
-# Uso: ./seal-admin-logs.sh nome-tenant [data_YYYY.MM.DD]
+# Limite onesto, identico a quello del meccanismo lato agent: la
+# sigillatura rende evidente una manomissione A POSTERIORI (rompe la
+# catena da quel punto in poi), ma non e' WORM hardware - chi ha accesso
+# pieno a Graylog/OpenSearch nella finestra PRIMA della sigillatura
+# potrebbe comunque alterare i dati senza che questo controllo se ne
+# accorga in quel preciso momento.
 set -euo pipefail
-cd "$(dirname "$0")/.."
-source .env 2>/dev/null || true
 
-TENANT="${1:?Uso: $0 nome-tenant [data_YYYY.MM.DD]}"
-TARGET_DATE="${2:-$(date -d 'yesterday' +%Y.%m.%d 2>/dev/null || date -v-1d +%Y.%m.%d)}"
+STATE_DIR="${SEAL_STATE_DIR:-/var/lib/logplatform-seal}"
+mkdir -p "$STATE_DIR"
 
-OPENSEARCH_URL="${OPENSEARCH_URL:-http://localhost:9200}"
-SEAL_DIR="${ADMIN_LOG_SEAL_DIR:-/mnt/graylog-data/admin-log-seals}/${TENANT}"
-TSA_URL="${ADMIN_LOG_TSA_URL:-https://freetsa.org/tsr}"
-TSA_USER="${ADMIN_LOG_TSA_USER:-}"
-TSA_PASSWORD="${ADMIN_LOG_TSA_PASSWORD:-}"
-TSA_CLIENT_CERT="${ADMIN_LOG_TSA_CLIENT_CERT:-}"
-TSA_CLIENT_KEY="${ADMIN_LOG_TSA_CLIENT_KEY:-}"
-INDEX_PATTERN="tenant-${TENANT}-admin-access_*"
+GRAYLOG_URL="${GRAYLOG_URL:?serve GRAYLOG_URL, es. http://127.0.0.1:20004}"
+GRAYLOG_API_USER="${GRAYLOG_API_USER:?serve GRAYLOG_API_USER}"
+GRAYLOG_API_PASSWORD="${GRAYLOG_API_PASSWORD:?serve GRAYLOG_API_PASSWORD}"
+RANGE_HOURS="${SEAL_RANGE_HOURS:-24}"
 
-mkdir -p "$SEAL_DIR"
-CHAIN_FILE="${SEAL_DIR}/chain-state.txt"
-MANIFEST="${SEAL_DIR}/manifest.log"   # append-only: mai riscritto, solo accodato
+RUN_ID="$(date -u +%Y-%m-%dT%H%M%SZ)"
+EXPORT_FILE="$STATE_DIR/${RUN_ID}.ndjson"
+GZ_FILE="$STATE_DIR/${RUN_ID}.ndjson.gz"
+CHAIN_FILE="$STATE_DIR/chain-state.txt"
+MANIFEST_FILE="$STATE_DIR/manifest.jsonl"
 
-PREV_HASH=$(cat "$CHAIN_FILE" 2>/dev/null || echo "0000000000000000000000000000000000000000000000000000000000000000")
+echo "Esporto i messaggi admin-access delle ultime $RANGE_HOURS ore (tutti i tenant)..."
 
-EXPORT_FILE="${SEAL_DIR}/${TARGET_DATE}.ndjson"
-echo "Esporto i documenti admin-access del ${TARGET_DATE} per tenant '${TENANT}'..."
+curl -s -u "${GRAYLOG_API_USER}:${GRAYLOG_API_PASSWORD}" \
+  -H "Accept: application/json" \
+  "${GRAYLOG_URL}/api/search/universal/relative?query=log_class:admin-access&range=$((RANGE_HOURS * 3600))&limit=10000&fields=timestamp,message,full_message,source,tenant" \
+  | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for entry in data.get('messages', []):
+    m = entry.get('message', entry)
+    print(json.dumps(m, ensure_ascii=False))
+" > "$EXPORT_FILE"
 
-# Scroll semplice su tutti i documenti dell'indice del giorno (assume
-# volumi giornalieri gestibili; per volumi molto grandi valuta lo Scroll
-# API a paginazione multipla invece di size fisso).
-curl -sf -X GET "${OPENSEARCH_URL}/${INDEX_PATTERN}/_search?size=10000" \
-  -H "Content-Type: application/json" \
-  -d '{"query": {"match_all": {}}, "sort": [{"timestamp": "asc"}]}' \
-  > "$EXPORT_FILE"
+LINE_COUNT=$(wc -l < "$EXPORT_FILE")
+echo "Esportate $LINE_COUNT righe."
 
-if [[ ! -s "$EXPORT_FILE" ]]; then
-  echo "ATTENZIONE: nessun dato esportato per ${TARGET_DATE} — indice assente o vuoto." >&2
-  echo "Se ti aspettavi log quel giorno, questo è un possibile buco di completezza da indagare." >&2
+if [[ "$LINE_COUNT" -eq 0 ]]; then
+  echo "Nessun log admin-access nel periodo: niente da sigillare in questa esecuzione."
+  rm -f "$EXPORT_FILE"
+  exit 0
 fi
 
-FILE_HASH=$(sha256sum "$EXPORT_FILE" | cut -d' ' -f1)
-CHAIN_INPUT=$(printf '%s%s' "$PREV_HASH" "$FILE_HASH")
-CHAIN_HASH=$(printf '%s' "$CHAIN_INPUT" | sha256sum | cut -d' ' -f1)
+gzip -f "$EXPORT_FILE"
 
+FILE_HASH=$(sha256sum "$GZ_FILE" | cut -d' ' -f1)
+
+if [[ -f "$CHAIN_FILE" ]]; then
+  PREV_HASH=$(cat "$CHAIN_FILE")
+else
+  PREV_HASH=$(printf '0%.0s' {1..64})
+fi
+
+CHAIN_HASH=$(echo -n "${PREV_HASH}${FILE_HASH}" | sha256sum | cut -d' ' -f1)
 echo "$CHAIN_HASH" > "$CHAIN_FILE"
 
 TSR_FILE=""
-if command -v openssl >/dev/null && [[ -n "$TSA_URL" ]]; then
-  TSQ_FILE="${SEAL_DIR}/${TARGET_DATE}.tsq"
-  TSR_FILE="${SEAL_DIR}/${TARGET_DATE}.tsr"
-  openssl ts -query -digest "$CHAIN_HASH" -sha256 -no_nonce -out "$TSQ_FILE" 2>/dev/null || true
-  if [[ -f "$TSQ_FILE" ]]; then
-    CURL_AUTH_ARGS=()
-    [[ -n "$TSA_USER" ]] && CURL_AUTH_ARGS+=(-u "${TSA_USER}:${TSA_PASSWORD}")
-    [[ -n "$TSA_CLIENT_CERT" ]] && CURL_AUTH_ARGS+=(--cert "$TSA_CLIENT_CERT")
-    [[ -n "$TSA_CLIENT_KEY" ]] && CURL_AUTH_ARGS+=(--key "$TSA_CLIENT_KEY")
-    curl -sf "${CURL_AUTH_ARGS[@]}" -H "Content-Type: application/timestamp-query" --data-binary "@${TSQ_FILE}" "$TSA_URL" \
-      -o "$TSR_FILE" 2>/dev/null || echo "ATTENZIONE: marca temporale non ottenuta (TSA non raggiungibile, credenziali errate, o URL sbagliato?)." >&2
+if [[ -n "${ADMIN_LOG_TSA_URL:-}" ]]; then
+  echo "Richiedo la marca temporale a ${ADMIN_LOG_TSA_URL}..."
+  TSQ_FILE="$STATE_DIR/${RUN_ID}.tsq"
+  TSR_FILE="$STATE_DIR/${RUN_ID}.tsr"
+
+  openssl ts -query -digest "$CHAIN_HASH" -sha256 -no_nonce -out "$TSQ_FILE"
+
+  CURL_AUTH_ARGS=()
+  if [[ -n "${ADMIN_LOG_TSA_USER:-}" ]]; then
+    CURL_AUTH_ARGS+=(-u "${ADMIN_LOG_TSA_USER}:${ADMIN_LOG_TSA_PASSWORD:-}")
   fi
+  if [[ -n "${ADMIN_LOG_TSA_CLIENT_CERT:-}" ]]; then
+    CURL_AUTH_ARGS+=(--cert "${ADMIN_LOG_TSA_CLIENT_CERT}" --key "${ADMIN_LOG_TSA_CLIENT_KEY}")
+  fi
+
+  if curl -s -f "${CURL_AUTH_ARGS[@]}" \
+      -H "Content-Type: application/timestamp-query" \
+      --data-binary "@${TSQ_FILE}" \
+      -o "$TSR_FILE" \
+      "${ADMIN_LOG_TSA_URL}"; then
+    echo "Marca temporale ottenuta: $TSR_FILE"
+  else
+    echo "ATTENZIONE: richiesta marca temporale fallita - la sigillatura procede comunque senza (hash chain valida lo stesso, solo senza timbro esterno)." >&2
+    rm -f "$TSR_FILE"
+    TSR_FILE=""
+  fi
+else
+  echo "ADMIN_LOG_TSA_URL non configurata: sigillo solo con hash chain, senza marca temporale esterna."
 fi
 
-echo "$(date -Iseconds) tenant=${TENANT} date=${TARGET_DATE} file=$(basename "$EXPORT_FILE") sha256=${FILE_HASH} chain_hash=${CHAIN_HASH} tsr=$(basename "${TSR_FILE:-nessuna}")" >> "$MANIFEST"
-
-# Rendi i file immutabili (best-effort: richiede filesystem che lo supporta,
-# es. ext4, e permessi root). Non è un errore bloccante se fallisce.
-if command -v chattr >/dev/null; then
-  chattr +i "$EXPORT_FILE" 2>/dev/null || true
-  [[ -n "$TSR_FILE" && -f "$TSR_FILE" ]] && chattr +i "$TSR_FILE" 2>/dev/null || true
+TSR_BASENAME=""
+if [[ -n "$TSR_FILE" && -f "$TSR_FILE" ]]; then
+  TSR_BASENAME="$(basename "$TSR_FILE")"
 fi
 
-echo "Sigillo completato per ${TARGET_DATE}: ${EXPORT_FILE}"
-echo "  sha256 file:  ${FILE_HASH}"
-echo "  hash catena:  ${CHAIN_HASH}"
-[[ -n "$TSR_FILE" && -f "$TSR_FILE" ]] && echo "  marca temporale: ${TSR_FILE}"
+python3 -c "
+import json
+entry = {
+    'sealed_at_utc': '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+    'period_covered_hours': $RANGE_HOURS,
+    'run_id': '$RUN_ID',
+    'file': '$(basename "$GZ_FILE")',
+    'lines': $LINE_COUNT,
+    'sha256': '$FILE_HASH',
+    'chain_hash': '$CHAIN_HASH',
+    'tsr': '$TSR_BASENAME' or None,
+}
+print(json.dumps(entry))
+" >> "$MANIFEST_FILE"
+
+echo "Sigillatura completata: $GZ_FILE ($LINE_COUNT righe, hash catena $CHAIN_HASH)"
+
+# --- Esempio di pianificazione via cron, due volte al mese ---
+# Aggiungi con: crontab -e (come root, sul nodo)
+#
+# 0 3 1,16 * * GRAYLOG_URL=http://127.0.0.1:20004 GRAYLOG_API_USER=admin \
+#   GRAYLOG_API_PASSWORD='...' SEAL_RANGE_HOURS=360 \
+#   ADMIN_LOG_TSA_URL=https://tsa.namirial.it/... \
+#   /root/logmanager/final-package/scripts/seal-admin-logs.sh >> /var/log/logplatform-seal.log 2>&1

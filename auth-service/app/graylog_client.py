@@ -230,3 +230,85 @@ def get_full_inventory_for_host(stream_id: str, hostname: str, range_hours: int 
         return json.loads(m.get("full_message", "{}"))
     except (ValueError, TypeError):
         return {}
+
+from datetime import datetime, timezone, timedelta
+
+OFFLINE_THRESHOLD_MINUTES = 20
+
+
+def get_device_dashboard_for_tenant(stream_id: str, range_minutes: int = 1440) -> dict:
+    """Panoramica dispositivi per un tenant: stato online/offline (nessun
+    log negli ultimi OFFLINE_THRESHOLD_MINUTES minuti) e conteggi per
+    gravita' (basati sul livello GELF: <=3 errore, 4 avviso, resto normale).
+
+    Limite onesto: la classificazione per gravita' e' accurata per i log
+    che arrivano gia' con un livello reale (es. Windows Event Log); i file
+    di log generici su Linux, se l'agent non analizza il testo, arrivano
+    tutti con livello di default (informativo) - vedi inventory.py e
+    agent.py per dove eventualmente estendere questo in futuro."""
+    result = _request("GET", "/api/search/universal/relative", params={
+        "query": "*",
+        "range": range_minutes * 60,
+        "limit": 5000,
+        "filter": f"streams:{stream_id}",
+        "sort": "timestamp:desc",
+        "fields": "timestamp,source,level",
+    })
+    messages = result.get("messages", [])
+
+    now = datetime.now(timezone.utc)
+    hosts = {}
+    total_today = 0
+
+    for entry in messages:
+        m = entry.get("message", entry)
+        host = m.get("source")
+        if not host:
+            continue
+        total_today += 1
+
+        ts_str = m.get("timestamp", "")
+        level = m.get("level")
+
+        if host not in hosts:
+            hosts[host] = {"hostname": host, "total": 0, "errors": 0,
+                            "warnings": 0, "ok": 0, "last_seen": ts_str}
+        h = hosts[host]
+        h["total"] += 1
+
+        try:
+            level_num = int(level) if level is not None else 6
+        except (TypeError, ValueError):
+            level_num = 6
+
+        if level_num <= 3:
+            h["errors"] += 1
+        elif level_num == 4:
+            h["warnings"] += 1
+        else:
+            h["ok"] += 1
+
+        # i messaggi arrivano ordinati dal piu' recente (sort=timestamp:desc),
+        # quindi il primo che vediamo per ogni host e' gia' il piu' recente -
+        # non serve confrontare, basta non sovrascriverlo con uno successivo
+        if "last_seen_set" not in h:
+            h["last_seen"] = ts_str
+            h["last_seen_set"] = True
+
+    device_list = []
+    for h in hosts.values():
+        h.pop("last_seen_set", None)
+        online = False
+        if h["last_seen"]:
+            try:
+                last_seen_dt = datetime.fromisoformat(h["last_seen"].replace("Z", "+00:00"))
+                online = (now - last_seen_dt) < timedelta(minutes=OFFLINE_THRESHOLD_MINUTES)
+            except ValueError:
+                pass
+        h["online"] = online
+        device_list.append(h)
+
+    return {
+        "devices": sorted(device_list, key=lambda x: x["hostname"]),
+        "total_messages_today": total_today,
+    }

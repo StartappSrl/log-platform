@@ -142,15 +142,19 @@ def main():
         tsa_password = s.get("local_archive_tsa_password", "").strip() or None
         tsa_client_cert = s.get("local_archive_tsa_client_cert", "").strip() or None
         tsa_client_key = s.get("local_archive_tsa_client_key", "").strip() or None
+        upload_url = s.get("local_archive_upload_url", "").strip() or None
+        upload_token = s.get("local_archive_upload_token", "").strip() or None
         for p in log_files + admin_log_files:
             archivers[p] = LocalArchiver(
                 source_id=Path(p).name, archive_dir=local_archive_dir,
                 tenant=tenant, hostname=hostname,
                 tsa_url=tsa_url, tsa_user=tsa_user, tsa_password=tsa_password,
                 tsa_client_cert=tsa_client_cert, tsa_client_key=tsa_client_key,
+                upload_url=upload_url, upload_token=upload_token,
             )
         print(f"Archiviazione locale attiva: {local_archive_dir} "
-              f"({len(archivers)} sorgenti, marca temporale {'attiva' if tsa_url else 'non configurata'})")
+              f"({len(archivers)} sorgenti, marca temporale {'attiva' if tsa_url else 'non configurata'}, "
+              f"upload al portale {'attivo' if upload_url else 'non configurato'})")
 
     connect_args = (graylog_host, graylog_port, ca_cert, client_cert, client_key)
     sock_holder = {"sock": connect(*connect_args)}

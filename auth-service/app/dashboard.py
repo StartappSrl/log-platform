@@ -352,3 +352,56 @@ def download_crl_route():
     scarichi periodicamente."""
     crl_pem = cert_ledger.generate_crl_pem()
     return Response(crl_pem, mimetype="application/pkix-crl")
+# --- Da aggiungere a app/dashboard.py (in fondo al file) ---
+
+from . import archive_storage
+
+
+@dash.get("/archives")
+@admin_required
+def list_archives_route():
+    tenant_name = request.args.get("tenant")
+    if not tenant_name:
+        return jsonify(error="specifica un tenant"), 400
+    archive_storage.prune_expired_archives()
+    return jsonify(archive_storage.list_archives_for_tenant(tenant_name))
+
+
+@dash.get("/archives/download")
+@admin_required
+def download_archive_route():
+    tenant_name = request.args.get("tenant")
+    hostname = request.args.get("hostname")
+    source_id = request.args.get("source_id")
+    if not tenant_name or not hostname or not source_id:
+        return jsonify(error="specifica tenant, hostname e source_id"), 400
+
+    zip_bytes = archive_storage.build_zip_for_host_source(tenant_name, hostname, source_id)
+    return send_file(
+        io.BytesIO(zip_bytes),
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"archivio-{tenant_name}-{hostname}-{source_id}.zip",
+    )
+
+
+# --- Da aggiungere in un NUOVO blueprint separato (vedi archive_upload_routes.py) ---
+# Questa rotta la chiama l'AGENT, non il browser: nessun login utente,
+# autenticata con il token per-tenant invece del cookie di sessione.
+# --- Da aggiungere a app/dashboard.py (in fondo al file) ---
+
+@dash.get("/device-dashboard")
+@login_required
+def device_dashboard_route():
+    tenant_name = request.args.get("tenant") or g.current_user.tenant
+    if not tenant_name:
+        return jsonify(error="specifica un tenant"), 400
+    t = _tenant_or_403(tenant_name)
+    if not t:
+        return jsonify(error="tenant non trovato o non autorizzato"), 403
+
+    try:
+        result = gl.get_device_dashboard_for_tenant(t.graylog_stream_id)
+    except gl.GraylogError as e:
+        return jsonify(error=f"errore Graylog: {e}"), 502
+    return jsonify(result)

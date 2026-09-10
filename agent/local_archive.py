@@ -66,7 +66,9 @@ class LocalArchiver:
     def __init__(self, source_id: str, archive_dir: str, tenant: str, hostname: str,
                  tsa_url: str | None = None, tsa_user: str | None = None,
                  tsa_password: str | None = None, tsa_client_cert: str | None = None,
-                 tsa_client_key: str | None = None):
+                 tsa_client_key: str | None = None, upload_url: str | None = None,
+                 upload_token: str | None = None):
+        self.source_id = source_id
         safe_id = "".join(c if c.isalnum() or c in "-_." else "_" for c in source_id)
         self.dir = Path(archive_dir) / safe_id
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -77,6 +79,8 @@ class LocalArchiver:
         self.tsa_password = tsa_password
         self.tsa_client_cert = tsa_client_cert
         self.tsa_client_key = tsa_client_key
+        self.upload_url = upload_url
+        self.upload_token = upload_token
 
         self._lock = threading.Lock()
         self._current_day = _today_str()
@@ -141,11 +145,72 @@ class LocalArchiver:
         with open(self.dir / "manifest.jsonl", "a", encoding="utf-8") as mf:
             mf.write(json.dumps(manifest_entry) + "\n")
 
+        # Prova a caricare una copia sul portale, oltre a quella locale.
+        # Se fallisce (rete assente, server irraggiungibile, ecc.) non
+        # blocca ne' fa fallire la sigillatura: la copia locale resta
+        # comunque la fonte primaria, l'upload e' un "anche", non un
+        # "invece di". Non c'e' ancora un ritentativo automatico se
+        # fallisce - resta solo in locale finche' l'agent non sigilla il
+        # prossimo giorno (non e' perso, va solo recuperato a mano se serve).
+        if self.upload_url and self.upload_token:
+            try:
+                tsr_path = (self.dir / tsr_name) if tsr_name else None
+                self._upload_sealed_day(day, gz_path, file_hash, chain_hash, tsr_path)
+            except Exception as e:
+                print(f"Archiviazione: upload al portale fallito per {day} "
+                      f"({self.source_id}): {e} - resta comunque salvato in locale.")
+
         # Il file raw non compresso non serve più una volta sigillato il .gz
         try:
             raw_path.unlink()
         except OSError:
             pass
+
+    def _upload_sealed_day(self, day: str, gz_path: Path, sha256: str, chain_hash: str,
+                            tsr_path: Path | None):
+        """Carica l'archivio sigillato di un giorno sul portale, con un
+        multipart/form-data costruito a mano (solo libreria standard,
+        niente 'requests' - lo stesso principio gia' usato per il resto
+        dell'agent, per non aggiungere dipendenze da installare sui
+        client)."""
+        import urllib.request
+        import uuid
+
+        boundary = uuid.uuid4().hex
+        parts = []
+
+        def add_file_part(field_name: str, filename: str, content: bytes):
+            parts.append(
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'
+                f"Content-Type: application/octet-stream\r\n\r\n".encode()
+                + content + b"\r\n"
+            )
+
+        add_file_part("archive", gz_path.name, gz_path.read_bytes())
+        if tsr_path and tsr_path.exists():
+            add_file_part("tsr", tsr_path.name, tsr_path.read_bytes())
+        parts.append(f"--{boundary}--\r\n".encode())
+        body = b"".join(parts)
+
+        req = urllib.request.Request(
+            self.upload_url,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "X-Tenant": self.tenant,
+                "X-Upload-Token": self.upload_token,
+                "X-Hostname": self.hostname,
+                "X-Source-Id": self.source_id,
+                "X-Day": day,
+                "X-Sha256": sha256,
+                "X-Chain-Hash": chain_hash,
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f"risposta HTTP {resp.status}")
 
     def _request_timestamp(self, chain_hash: str, day: str) -> str | None:
         if not self.tsa_url:
