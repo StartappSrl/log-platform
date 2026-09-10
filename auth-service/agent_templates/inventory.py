@@ -236,7 +236,27 @@ def _windows_software():
 
 
 def _windows_os_info():
-    return {"family": "Windows", "name": platform.platform()}
+    """platform.platform() riporta 'Windows-10' anche su Windows 11: per
+    compatibilita' storica, entrambi condividono lo schema di numerazione
+    versione major.minor 10.0 - la build (>= 22000 per Windows 11, < 22000
+    per Windows 10) e' l'unico modo affidabile per distinguerli. Scoperto
+    con un dato reale: un PC Windows 11 (build 26200) veniva riportato
+    come 'Windows-10-10.0.26200-SP0'."""
+    try:
+        v = sys.getwindowsversion()
+        build = v.build
+        if v.major == 10 and build >= 22000:
+            name = f"Windows 11 (build {build})"
+        elif v.major == 10:
+            name = f"Windows 10 (build {build})"
+        else:
+            name = platform.platform()
+    except AttributeError:
+        # sys.getwindowsversion() esiste solo su Windows: fallback per
+        # completezza (non dovrebbe capitare, questa funzione viene
+        # chiamata solo quando platform.system() == "Windows").
+        name = platform.platform()
+    return {"family": "Windows", "name": name}
 
 
 # -------------------------------------------------------------- comune ---
