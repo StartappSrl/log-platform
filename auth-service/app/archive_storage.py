@@ -37,6 +37,7 @@ def _connect():
             sha256 TEXT,
             chain_hash TEXT,
             has_tsr INTEGER NOT NULL DEFAULT 0,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
             uploaded_at TEXT NOT NULL,
             PRIMARY KEY (tenant, hostname, source_id, day)
         )
@@ -81,10 +82,10 @@ def store_uploaded_day(tenant: str, hostname: str, source_id: str, day: str,
     with closing(_connect()) as conn:
         conn.execute(
             "INSERT OR REPLACE INTO uploaded_days "
-            "(tenant, hostname, source_id, day, sha256, chain_hash, has_tsr, uploaded_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(tenant, hostname, source_id, day, sha256, chain_hash, has_tsr, size_bytes, uploaded_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (tenant, hostname, source_id, day, sha256, chain_hash, int(bool(tsr_bytes)),
-             datetime.now(timezone.utc).isoformat()),
+             len(gz_bytes), datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
 
@@ -121,6 +122,93 @@ def list_archives_for_tenant(tenant: str) -> list:
     return sorted(result, key=lambda x: (x["hostname"], x["source_id"]))
 
 
+def list_archive_files_for_tenant(tenant: str) -> list:
+    """Elenco 'piatto': una riga per ogni singolo file archiviato (un
+    giorno di un host/sorgente), non raggruppato - per una tabella stile
+    file manager con un pulsante Download per riga."""
+    with closing(_connect()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT hostname, source_id, day, has_tsr, size_bytes, uploaded_at "
+            "FROM uploaded_days WHERE tenant = ? ORDER BY day DESC, hostname, source_id",
+            (tenant,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def build_zip_for_single_day(tenant: str, hostname: str, source_id: str, day: str) -> bytes:
+    """ZIP con il file di un singolo giorno (+ la sua marca temporale, se
+    presente) - per il pulsante Download di una singola riga."""
+    import zipfile
+    import io
+
+    d = _host_dir(tenant, hostname, source_id)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for suffix in (".log.gz", ".tsr"):
+            f = d / f"{day}{suffix}"
+            if f.exists():
+                zf.write(f, arcname=f.name)
+    return buf.getvalue()
+
+
+def build_zip_for_entire_tenant(tenant: str) -> bytes:
+    """ZIP con TUTTI gli archivi di un cliente, organizzati in cartelle
+    per host/sorgente dentro lo ZIP - per il pulsante 'Scarica tutto'."""
+    import zipfile
+    import io
+
+    safe = lambda s: "".join(c if c.isalnum() or c in "-_." else "_" for c in s)
+    tenant_dir = ARCHIVE_DIR / safe(tenant)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        if tenant_dir.exists():
+            for f in sorted(tenant_dir.rglob("*")):
+                if f.is_file():
+                    # percorso relativo dentro lo zip: hostname/sorgente/giorno.log.gz
+                    arcname = f.relative_to(tenant_dir)
+                    zf.write(f, arcname=str(arcname))
+    return buf.getvalue()
+
+
+def list_available_days_for_tenant(tenant: str) -> list:
+    """Elenco dei giorni distinti per cui esiste almeno un archivio di
+    questo cliente - per popolare il selettore 'Scarica giorno'."""
+    with closing(_connect()) as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT day FROM uploaded_days WHERE tenant = ? ORDER BY day DESC",
+            (tenant,),
+        ).fetchall()
+        return [r[0] for r in rows]
+
+
+def build_zip_for_tenant_day(tenant: str, day: str) -> bytes:
+    """ZIP con TUTTI gli host/sorgenti di un cliente ma solo per UN
+    giorno specifico, organizzati in cartelle per host/sorgente dentro
+    lo ZIP - per il pulsante 'Scarica giorno'."""
+    import zipfile
+    import io
+
+    with closing(_connect()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT hostname, source_id, has_tsr FROM uploaded_days WHERE tenant = ? AND day = ?",
+            (tenant, day),
+        ).fetchall()
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for r in rows:
+            d = _host_dir(tenant, r["hostname"], r["source_id"])
+            for suffix in (".log.gz", ".tsr"):
+                f = d / f"{day}{suffix}"
+                if f.exists():
+                    arcname = f"{r['hostname']}/{r['source_id']}/{f.name}"
+                    zf.write(f, arcname=arcname)
+    return buf.getvalue()
+
+
 def build_zip_for_host_source(tenant: str, hostname: str, source_id: str) -> bytes:
     import zipfile
     import io
@@ -132,6 +220,7 @@ def build_zip_for_host_source(tenant: str, hostname: str, source_id: str) -> byt
             for f in sorted(d.iterdir()):
                 zf.write(f, arcname=f.name)
     return buf.getvalue()
+
 
 
 def prune_expired_archives(retention_months: int | None = None) -> int:

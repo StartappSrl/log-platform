@@ -285,17 +285,11 @@
         <select id="archivi-tenant"></select>
       </div>
       <button onclick="loadArchivi()">Aggiorna</button>
-      <a id="archivi-download-all" href="#" class="primary" style="text-decoration:none;padding:.55rem 1.1rem;border-radius:6px;font-weight:600">Scarica tutto</a>
-      <div>
-        <label>Scarica un giorno specifico</label>
-        <select id="archivi-day-select" onchange="updateDayDownloadLink()"></select>
-      </div>
-      <a id="archivi-download-day" href="#" class="primary" style="text-decoration:none;padding:.55rem 1.1rem;border-radius:6px;font-weight:600">Scarica giorno</a>
     </div>
     <table id="archivi-table">
       <thead><tr>
-        <th>Host</th><th>Sorgente</th><th>Giorno</th><th>Dimensione</th>
-        <th>Caricato il</th><th>Marca temporale</th><th></th>
+        <th>Host</th><th>Sorgente</th><th>Giorni disponibili</th>
+        <th>Dal</th><th>Al</th><th>Con marca temporale</th><th>Azione</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -627,46 +621,19 @@ async function revokeCertificate(serial) {
 }
 
 // --- Archivi ---
-function formatSize(bytes) {
-  if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return bytes + ' B';
-}
-
-function updateDayDownloadLink() {
-  const tenant = document.getElementById('archivi-tenant').value;
-  const day = document.getElementById('archivi-day-select').value;
-  document.getElementById('archivi-download-day').href =
-    '/_authgate/dashboard/archives/download-day?tenant=' + encodeURIComponent(tenant) +
-    '&day=' + encodeURIComponent(day);
-}
-
 async function loadArchivi() {
   const tenant = document.getElementById('archivi-tenant').value;
   if (!tenant) return;
-  document.getElementById('archivi-download-all').href =
-    '/_authgate/dashboard/archives/download-all?tenant=' + encodeURIComponent(tenant);
-
   try {
-    const days = await api('/_authgate/dashboard/archives/days?tenant=' + encodeURIComponent(tenant));
-    const daySelect = document.getElementById('archivi-day-select');
-    daySelect.innerHTML = days.map(d => `<option value="${d}">${d}</option>`).join('');
-    updateDayDownloadLink();
-  } catch (e) { /* non blocca il resto della schermata */ }
-
-  try {
-    const files = await api('/_authgate/dashboard/archives?tenant=' + encodeURIComponent(tenant));
+    const archivi = await api('/_authgate/dashboard/archives?tenant=' + encodeURIComponent(tenant));
     const tbody = document.querySelector('#archivi-table tbody');
     tbody.innerHTML = '';
-    document.getElementById('archivi-empty').style.display = files.length ? 'none' : 'block';
-    files.forEach(f => {
+    document.getElementById('archivi-empty').style.display = archivi.length ? 'none' : 'block';
+    archivi.forEach(a => {
       const tr = document.createElement('tr');
-      const caricatoIl = f.uploaded_at ? new Date(f.uploaded_at).toLocaleString() : '';
-      const marca = f.has_tsr ? 'Sì' : 'No';
-      const dlUrl = `/_authgate/dashboard/archives/download?tenant=${encodeURIComponent(tenant)}&hostname=${encodeURIComponent(f.hostname)}&source_id=${encodeURIComponent(f.source_id)}&day=${encodeURIComponent(f.day)}`;
-      tr.innerHTML = `<td>${f.hostname}</td><td>${f.source_id}</td><td>${f.day}</td>
-        <td>${formatSize(f.size_bytes)}</td><td>${caricatoIl}</td><td>${marca}</td>
-        <td><a href="${dlUrl}">Download</a></td>`;
+      tr.innerHTML = `<td>${a.hostname}</td><td>${a.source_id}</td><td>${a.total_days}</td>
+        <td>${a.first_day}</td><td>${a.last_day}</td><td>${a.days_with_tsr} / ${a.total_days}</td>
+        <td><a href="/_authgate/dashboard/archives/download?tenant=${encodeURIComponent(tenant)}&hostname=${encodeURIComponent(a.hostname)}&source_id=${encodeURIComponent(a.source_id)}">Scarica ZIP</a></td>`;
       tbody.appendChild(tr);
     });
     showError('');
