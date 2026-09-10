@@ -28,14 +28,6 @@ class Tenant(db.Model):
     graylog_index_set_id = db.Column(db.String(64), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Anagrafica cliente (facoltativa, per intestare bene report/fatture)
-    ragione_sociale = db.Column(db.String(255), nullable=True)
-    partita_iva = db.Column(db.String(50), nullable=True)
-    indirizzo = db.Column(db.String(500), nullable=True)
-    referente = db.Column(db.String(255), nullable=True)
-    email = db.Column(db.String(255), nullable=True)
-    note = db.Column(db.Text, nullable=True)
-
 
 class FailedLogin(db.Model):
     __tablename__ = "failed_logins"

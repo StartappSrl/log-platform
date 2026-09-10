@@ -58,10 +58,7 @@ def whoami():
 def list_tenants():
     tenants = Tenant.query.order_by(Tenant.name).all()
     return jsonify([{"name": t.name, "display_name": t.display_name,
-                      "stream_id": t.graylog_stream_id,
-                      "ragione_sociale": t.ragione_sociale, "partita_iva": t.partita_iva,
-                      "indirizzo": t.indirizzo, "referente": t.referente,
-                      "email": t.email, "note": t.note} for t in tenants])
+                      "stream_id": t.graylog_stream_id} for t in tenants])
 
 
 @dash.post("/tenants")
@@ -72,12 +69,6 @@ def create_tenant_route():
     name = (data.get("name") or "").strip().lower()
     display_name = data.get("display_name") or name
     retention_days = int(data.get("retention_days") or 90)
-    ragione_sociale = (data.get("ragione_sociale") or "").strip() or None
-    partita_iva = (data.get("partita_iva") or "").strip() or None
-    indirizzo = (data.get("indirizzo") or "").strip() or None
-    referente = (data.get("referente") or "").strip() or None
-    email = (data.get("email") or "").strip() or None
-    note = (data.get("note") or "").strip() or None
 
     if not name or not name.replace("-", "").isalnum():
         return jsonify(error="nome tenant non valido (solo lettere, numeri, trattini)"), 400
@@ -90,9 +81,7 @@ def create_tenant_route():
         return jsonify(error=f"errore Graylog: {e}"), 502
 
     t = Tenant(name=name, display_name=display_name,
-               graylog_stream_id=result["stream_id"], graylog_index_set_id=result["index_set_id"],
-               ragione_sociale=ragione_sociale, partita_iva=partita_iva, indirizzo=indirizzo,
-               referente=referente, email=email, note=note)
+               graylog_stream_id=result["stream_id"], graylog_index_set_id=result["index_set_id"])
     db.session.add(t)
     db.session.commit()
     return jsonify(name=t.name, display_name=t.display_name, stream_id=t.graylog_stream_id), 201

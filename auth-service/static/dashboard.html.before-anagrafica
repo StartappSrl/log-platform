@@ -95,43 +95,11 @@
           <label>Conservazione (giorni)</label>
           <input id="new-tenant-retention" type="number" value="90" style="width:90px">
         </div>
-      </div>
-      <div class="row">
-        <div>
-          <label>Ragione sociale</label>
-          <input id="new-tenant-ragione-sociale" placeholder="es. ACME S.r.l.">
-        </div>
-        <div>
-          <label>Partita IVA / Codice Fiscale</label>
-          <input id="new-tenant-piva" placeholder="es. 01234567890">
-        </div>
-        <div>
-          <label>Referente</label>
-          <input id="new-tenant-referente" placeholder="es. Mario Rossi">
-        </div>
-        <div>
-          <label>Email</label>
-          <input id="new-tenant-email" type="email" placeholder="es. mario.rossi@acme.it">
-        </div>
-      </div>
-      <div class="row">
-        <div style="flex:1">
-          <label>Indirizzo</label>
-          <input id="new-tenant-indirizzo" placeholder="es. Via Roma 1, 00100 Roma (RM)" style="width:100%">
-        </div>
-      </div>
-      <div class="row">
-        <div style="flex:1">
-          <label>Note</label>
-          <input id="new-tenant-note" placeholder="Note libere" style="width:100%">
-        </div>
-      </div>
-      <div class="row">
         <button class="primary" onclick="createTenant()">Crea cliente</button>
       </div>
     </div>
     <table id="tenants-table">
-      <thead><tr><th>Identificativo</th><th>Nome</th><th>Ragione sociale</th><th>P.IVA/CF</th><th>Referente</th><th>Email</th><th>Stream Graylog</th><th>Agent</th></tr></thead>
+      <thead><tr><th>Identificativo</th><th>Nome</th><th>Stream Graylog</th><th>Agent</th></tr></thead>
       <tbody></tbody>
     </table>
     <div class="empty" id="tenants-empty" style="display:none">Nessun cliente ancora. Creane uno sopra.</div>
@@ -409,7 +377,7 @@ async function loadTenants() {
     document.getElementById('tenants-empty').style.display = tenants.length ? 'none' : 'block';
     tenants.forEach(t => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a></td>`;
+      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.stream_id || ''}</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a></td>`;
       tbody.appendChild(tr);
     });
   } catch (e) { showError(e.message); }
@@ -419,25 +387,11 @@ async function createTenant() {
   const name = document.getElementById('new-tenant-name').value.trim();
   const display_name = document.getElementById('new-tenant-display').value.trim();
   const retention_days = parseInt(document.getElementById('new-tenant-retention').value || '90', 10);
-  const ragione_sociale = document.getElementById('new-tenant-ragione-sociale').value.trim();
-  const partita_iva = document.getElementById('new-tenant-piva').value.trim();
-  const referente = document.getElementById('new-tenant-referente').value.trim();
-  const email = document.getElementById('new-tenant-email').value.trim();
-  const indirizzo = document.getElementById('new-tenant-indirizzo').value.trim();
-  const note = document.getElementById('new-tenant-note').value.trim();
   if (!name) { showError('Inserisci un identificativo cliente.'); return; }
   try {
-    await api('/_authgate/dashboard/tenants', { method: 'POST', body: JSON.stringify({
-      name, display_name, retention_days, ragione_sociale, partita_iva, referente, email, indirizzo, note
-    }) });
+    await api('/_authgate/dashboard/tenants', { method: 'POST', body: JSON.stringify({ name, display_name, retention_days }) });
     document.getElementById('new-tenant-name').value = '';
     document.getElementById('new-tenant-display').value = '';
-    document.getElementById('new-tenant-ragione-sociale').value = '';
-    document.getElementById('new-tenant-piva').value = '';
-    document.getElementById('new-tenant-referente').value = '';
-    document.getElementById('new-tenant-email').value = '';
-    document.getElementById('new-tenant-indirizzo').value = '';
-    document.getElementById('new-tenant-note').value = '';
     showError('');
     loadTenants();
   } catch (e) { showError(e.message); }
