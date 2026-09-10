@@ -669,9 +669,8 @@ async function loadArchivi() {
 }
 
 // --- Dashboard dispositivi ---
-async function goToLogsFor(tenant, hostname, levelFilter) {
+function goToLogsFor(tenant, hostname, levelFilter) {
   showPanel('ricerca');
-  await loadTenantOptions('ricerca-tenant');
   document.getElementById('ricerca-tenant').value = tenant;
   const queries = {
     errors: `source:"${hostname}" AND level:[0 TO 3]`,
