@@ -459,3 +459,32 @@ def device_dashboard_route():
     except gl.GraylogError as e:
         return jsonify(error=f"errore Graylog: {e}"), 502
     return jsonify(result)
+
+@dash.get("/device-dashboard-all")
+@login_required
+def device_dashboard_all_route():
+    """Come /device-dashboard, ma raggruppato per TUTTI i clienti insieme
+    (per l'admin, che non deve piu' scegliere un cliente alla volta) -
+    per un utente legato a un singolo cliente, ritorna solo il suo
+    (comunque nella stessa forma 'a lista', per usare la stessa schermata
+    in entrambi i casi). Se un cliente specifico da' errore verso
+    Graylog, non blocca gli altri: compare con lista vuota e si continua
+    con il resto."""
+    if g.current_user.tenant:
+        tenants = Tenant.query.filter_by(name=g.current_user.tenant).all()
+    else:
+        tenants = Tenant.query.order_by(Tenant.name).all()
+
+    result = []
+    for t in tenants:
+        try:
+            data = gl.get_device_dashboard_for_tenant(t.graylog_stream_id)
+        except gl.GraylogError:
+            data = {"devices": [], "total_messages_today": 0}
+        result.append({
+            "tenant": t.name,
+            "display_name": t.display_name or t.name,
+            "devices": data["devices"],
+            "total_messages_today": data["total_messages_today"],
+        })
+    return jsonify(result)

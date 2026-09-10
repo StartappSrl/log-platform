@@ -305,10 +305,15 @@
 
   <section class="panel" id="panel-dashboard">
     <div class="row">
+      <div id="dashboard-tenant-wrap">
+        <label>Cliente</label>
+        <select id="dashboard-tenant"></select>
+      </div>
       <button onclick="loadDeviceDashboard()">Aggiorna</button>
     </div>
-    <div id="dashboard-groups"></div>
-    <div class="empty" id="dashboard-empty" style="display:none">Nessun cliente configurato ancora.</div>
+    <div id="dashboard-summary" style="margin-bottom:1rem;color:#64748b;font-size:.9rem"></div>
+    <div id="dashboard-devices"></div>
+    <div class="empty" id="dashboard-empty" style="display:none">Nessun dispositivo ha inviato log nelle ultime 24 ore per questo cliente.</div>
   </section>
 
 </main>
@@ -351,7 +356,7 @@ function logout() {
 }
 
 function showPanel(name) {
-  if (name === 'dashboard') { loadDeviceDashboard(); }
+  if (name === 'dashboard') { loadTenantOptions('dashboard-tenant').then(loadDeviceDashboard); }
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
@@ -669,62 +674,32 @@ async function loadArchivi() {
 }
 
 // --- Dashboard dispositivi ---
-function goToLogsFor(tenant, hostname, levelFilter) {
-  showPanel('ricerca');
-  document.getElementById('ricerca-tenant').value = tenant;
-  const queries = {
-    errors: `source:"${hostname}" AND level:[0 TO 3]`,
-    warnings: `source:"${hostname}" AND level:4`,
-    ok: `source:"${hostname}" AND level:[5 TO 7]`,
-    total: `source:"${hostname}"`,
-  };
-  document.getElementById('ricerca-query').value = queries[levelFilter] || `source:"${hostname}"`;
-  runSearch();
-}
-
 async function loadDeviceDashboard() {
-  const container = document.getElementById('dashboard-groups');
-  container.innerHTML = '';
+  const tenant = document.getElementById('dashboard-tenant').value;
+  if (!tenant) return;
   try {
-    const groups = await api('/_authgate/dashboard/device-dashboard-all');
-    document.getElementById('dashboard-empty').style.display = groups.length ? 'none' : 'block';
-    groups.forEach(g => {
-      const section = document.createElement('div');
-      section.style.marginBottom = '2rem';
-      const heading = document.createElement('h3');
-      heading.textContent = `${g.display_name} — ${g.total_messages_today} log nelle ultime 24 ore, ${g.devices.length} dispositivi`;
-      section.appendChild(heading);
-
-      if (!g.devices.length) {
-        const empty = document.createElement('div');
-        empty.className = 'empty';
-        empty.textContent = 'Nessun dispositivo ha inviato log nelle ultime 24 ore.';
-        section.appendChild(empty);
-      }
-
-      g.devices.forEach(d => {
-        const row = document.createElement('div');
-        row.className = 'device-row';
-        const statusClass = d.online ? 'online' : 'offline';
-        const lastSeen = d.last_seen ? new Date(d.last_seen).toLocaleString() : '-';
-        row.innerHTML = `
-          <div class="device-status ${statusClass}" title="${d.online ? 'Online' : 'Offline'}"></div>
-          <div class="device-name">${d.hostname}</div>
-          <span class="device-badge total" style="cursor:pointer" title="Vedi tutti i log">${d.total}</span>
-          <span class="device-badge errors" style="cursor:pointer" title="Vedi gli errori">${d.errors}</span>
-          <span class="device-badge warnings" style="cursor:pointer" title="Vedi gli avvisi">${d.warnings}</span>
-          <span class="device-badge ok" style="cursor:pointer" title="Vedi i log normali">${d.ok}</span>
-          <div class="device-lastseen">${lastSeen}</div>
-        `;
-        const badges = row.querySelectorAll('.device-badge');
-        badges[0].onclick = () => goToLogsFor(g.tenant, d.hostname, 'total');
-        badges[1].onclick = () => goToLogsFor(g.tenant, d.hostname, 'errors');
-        badges[2].onclick = () => goToLogsFor(g.tenant, d.hostname, 'warnings');
-        badges[3].onclick = () => goToLogsFor(g.tenant, d.hostname, 'ok');
-        section.appendChild(row);
-      });
-
-      container.appendChild(section);
+    const data = await api('/_authgate/dashboard/device-dashboard?tenant=' + encodeURIComponent(tenant));
+    const devices = data.devices || [];
+    document.getElementById('dashboard-summary').textContent =
+      `Log ricevuti nelle ultime 24 ore: ${data.total_messages_today} — ${devices.length} dispositivi`;
+    const container = document.getElementById('dashboard-devices');
+    container.innerHTML = '';
+    document.getElementById('dashboard-empty').style.display = devices.length ? 'none' : 'block';
+    devices.forEach(d => {
+      const row = document.createElement('div');
+      row.className = 'device-row';
+      const statusClass = d.online ? 'online' : 'offline';
+      const lastSeen = d.last_seen ? new Date(d.last_seen).toLocaleString() : '-';
+      row.innerHTML = `
+        <div class="device-status ${statusClass}" title="${d.online ? 'Online' : 'Offline'}"></div>
+        <div class="device-name">${d.hostname}</div>
+        <span class="device-badge total">${d.total}</span>
+        <span class="device-badge errors">${d.errors}</span>
+        <span class="device-badge warnings">${d.warnings}</span>
+        <span class="device-badge ok">${d.ok}</span>
+        <div class="device-lastseen">${lastSeen}</div>
+      `;
+      container.appendChild(row);
     });
     showError('');
   } catch (e) { showError(e.message); }
