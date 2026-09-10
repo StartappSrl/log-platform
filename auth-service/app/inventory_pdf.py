@@ -7,6 +7,7 @@ import io
 import os
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -68,12 +69,12 @@ def build_inventory_pdf(inventory: dict, tenant: str, hostname: str) -> bytes:
         story.append(Spacer(1, 0.6 * cm))
 
     story.append(Paragraph(f"Scheda inventario — {hostname}", title_style))
-    generato_il = datetime.now().strftime("%d/%m/%Y %H:%M")
+    generato_il = datetime.now(ZoneInfo("Europe/Rome")).strftime("%d/%m/%Y %H:%M")
     rilevato_il = inventory.get("collected_at")
     rilevato_str = ""
     if rilevato_il:
         try:
-            rilevato_str = f" — dati rilevati il {datetime.fromtimestamp(rilevato_il).strftime('%d/%m/%Y %H:%M')}"
+            rilevato_str = f" — dati rilevati il {datetime.fromtimestamp(rilevato_il, tz=ZoneInfo('Europe/Rome')).strftime('%d/%m/%Y %H:%M')}"
         except (TypeError, ValueError, OSError):
             pass
     story.append(Paragraph(f"Cliente: {tenant} — scheda generata il {generato_il}{rilevato_str}", subtitle_style))

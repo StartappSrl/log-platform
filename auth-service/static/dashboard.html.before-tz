@@ -473,7 +473,7 @@ async function loadInventory() {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>${h.hostname}</td><td>${os}</td><td>${cpu}</td><td>${ram}</td><td>${disk}</td>
         <td><a href="#" onclick="showSoftware('${tenant}','${h.hostname}');return false;">${h.software_count || 0} pacchetti</a></td>
-        <td>${h.timestamp ? new Date(h.timestamp).toLocaleString() : ''}</td>
+        <td>${h.timestamp || ''}</td>
         <td><a href="/_authgate/dashboard/inventory/export?tenant=${tenant}&hostname=${h.hostname}">PDF</a></td>`;
       tbody.appendChild(tr);
     });
