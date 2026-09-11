@@ -699,10 +699,6 @@ async function loadDeviceDashboard() {
     groups.forEach(g => {
       const section = document.createElement('div');
       section.style.marginBottom = '2rem';
-      section.style.border = '1px solid #e2e8f0';
-      section.style.borderRadius = '10px';
-      section.style.padding = '1.25rem 1.5rem';
-      section.style.background = '#ffffff';
       const heading = document.createElement('h3');
       heading.textContent = `${g.display_name} — ${g.total_messages_today} log nelle ultime 24 ore, ${g.devices.length} dispositivi`;
       section.appendChild(heading);

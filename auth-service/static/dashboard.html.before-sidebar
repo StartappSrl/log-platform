@@ -7,24 +7,18 @@
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background:#f8fafc; color:#1e293b; margin:0; }
-  .app-layout { display:flex; min-height:100vh; align-items:stretch; }
-  .sidebar { width:220px; flex-shrink:0; background:#1e293b; color:#e2e8f0;
-             display:flex; flex-direction:column; }
-  .sidebar h1 { font-size:1.1rem; margin:0; padding:1.25rem 1.25rem .75rem; color:#f8fafc; }
-  .sidebar nav { display:flex; flex-direction:column; gap:.15rem; padding:0 .75rem; flex:1; }
-  .sidebar nav button { background:transparent; border:none; color:#94a3b8; padding:.7rem .75rem;
-                        cursor:pointer; font-size:.9rem; text-align:left; border-radius:6px;
-                        border-left:3px solid transparent; }
-  .sidebar nav button:hover { background:#273548; color:#e2e8f0; }
-  .sidebar nav button.active { color:#ffffff; background:#273548; border-left-color:#3b82f6; }
-  .sidebar .who { padding:1rem 1.25rem; border-top:1px solid #334155; font-size:.8rem; color:#94a3b8; }
-  .sidebar .who .badge { background:#334155; color:#e2e8f0; padding:.15rem .5rem; border-radius:4px;
-                          margin-left:.4rem; display:inline-block; margin-top:.3rem; }
-  .sidebar button.logout { background:transparent; border:1px solid #475569; color:#e2e8f0;
-                           padding:.4rem .8rem; border-radius:6px; cursor:pointer; margin-top:.6rem;
-                           width:100%; }
-  .main-wrapper { flex:1; min-width:0; }
-  main { padding:1.5rem 2rem; max-width:1100px; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:1rem 1.5rem;
+           background:#ffffff; border-bottom:1px solid #e2e8f0; }
+  header h1 { font-size:1.1rem; margin:0; }
+  .who { font-size:.85rem; color:#64748b; }
+  .badge { background:#e2e8f0; color:#1e293b; padding:.15rem .5rem; border-radius:4px; margin-left:.5rem; }
+  button.logout { background:transparent; border:1px solid #cbd5e1; color:#1e293b; padding:.4rem .8rem;
+                  border-radius:6px; cursor:pointer; }
+  nav { display:flex; gap:.25rem; padding:0 1.5rem; background:#ffffff; border-bottom:1px solid #e2e8f0; }
+  nav button { background:transparent; border:none; color:#64748b; padding:.8rem 1rem; cursor:pointer;
+               font-size:.9rem; border-bottom:2px solid transparent; }
+  nav button.active { color:#1e293b; border-bottom-color:#3b82f6; }
+  main { padding:1.5rem; max-width:1000px; margin:0 auto; }
   .panel { display:none; }
   .panel.active { display:block; }
   .row { display:flex; gap:.75rem; align-items:end; flex-wrap:wrap; margin-bottom:1rem; }
@@ -61,25 +55,26 @@
 </head>
 <body>
 
-<div class="app-layout">
-  <div class="sidebar">
-    <h1>Log Platform</h1>
-    <nav>
-      <button data-panel="dashboard" onclick="showPanel('dashboard')">Dashboard</button>
-      <button data-panel="clienti" id="nav-clienti" onclick="showPanel('clienti')">Clienti</button>
-      <button data-panel="ricerca" onclick="showPanel('ricerca')">Ricerca</button>
-      <button data-panel="allarmi" onclick="showPanel('allarmi')">Allarmi</button>
-      <button data-panel="notifiche" onclick="showPanel('notifiche')">Notifiche</button>
-      <button data-panel="inventario" onclick="showPanel('inventario')">Inventario</button>
-      <button data-panel="certificati" onclick="showPanel('certificati')">Certificati</button>
-      <button data-panel="archivi" onclick="showPanel('archivi')">Archivi</button>
-    </nav>
-    <div class="who">
-      <div><span id="who-username"></span><span class="badge" id="who-tenant"></span></div>
-      <button class="logout" onclick="logout()">Esci</button>
-    </div>
+<header>
+  <h1>Log Platform</h1>
+  <div class="who">
+    <span id="who-username"></span>
+    <span class="badge" id="who-tenant"></span>
+    <button class="logout" onclick="logout()">Esci</button>
   </div>
-  <div class="main-wrapper">
+</header>
+
+<nav>
+  <button data-panel="dashboard" onclick="showPanel('dashboard')">Dashboard</button>
+  <button data-panel="clienti" id="nav-clienti" onclick="showPanel('clienti')">Clienti</button>
+  <button data-panel="ricerca" onclick="showPanel('ricerca')">Ricerca</button>
+  <button data-panel="allarmi" onclick="showPanel('allarmi')">Allarmi</button>
+  <button data-panel="notifiche" onclick="showPanel('notifiche')">Notifiche</button>
+  <button data-panel="inventario" onclick="showPanel('inventario')">Inventario</button>
+  <button data-panel="certificati" onclick="showPanel('certificati')">Certificati</button>
+  <button data-panel="archivi" onclick="showPanel('archivi')">Archivi</button>
+</nav>
+
 <main>
   <div id="global-error"></div>
 
@@ -317,8 +312,6 @@
   </section>
 
 </main>
-  </div>
-</div>
 
 <script>
 let ME = null; // {username, tenant, is_admin}
@@ -699,10 +692,6 @@ async function loadDeviceDashboard() {
     groups.forEach(g => {
       const section = document.createElement('div');
       section.style.marginBottom = '2rem';
-      section.style.border = '1px solid #e2e8f0';
-      section.style.borderRadius = '10px';
-      section.style.padding = '1.25rem 1.5rem';
-      section.style.background = '#ffffff';
       const heading = document.createElement('h3');
       heading.textContent = `${g.display_name} — ${g.total_messages_today} log nelle ultime 24 ore, ${g.devices.length} dispositivi`;
       section.appendChild(heading);
