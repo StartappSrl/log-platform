@@ -73,7 +73,6 @@
       <button data-panel="inventario" onclick="showPanel('inventario')">Inventario</button>
       <button data-panel="certificati" onclick="showPanel('certificati')">Certificati</button>
       <button data-panel="archivi" onclick="showPanel('archivi')">Archivi</button>
-      <button data-panel="impostazioni" onclick="showPanel('impostazioni')">Impostazioni</button>
     </nav>
     <div class="who">
       <div><span id="who-username"></span><span class="badge" id="who-tenant"></span></div>
@@ -317,50 +316,6 @@
     <div class="empty" id="dashboard-empty" style="display:none">Nessun cliente configurato ancora.</div>
   </section>
 
-
-  <section class="panel" id="panel-impostazioni">
-    <div class="card-form">
-      <h3>Configurazione email (report notturno)</h3>
-      <div class="row">
-        <div>
-          <label>Server SMTP</label>
-          <input id="smtp-host" placeholder="es. smtp.tuoserver.it">
-        </div>
-        <div>
-          <label>Porta</label>
-          <input id="smtp-port" type="number" value="587" style="width:90px">
-        </div>
-        <div class="checkbox-row">
-          <input type="checkbox" id="smtp-tls" checked>
-          <label style="margin:0">Usa TLS</label>
-        </div>
-      </div>
-      <div class="row">
-        <div>
-          <label>Utente SMTP</label>
-          <input id="smtp-user" placeholder="es. report@tuodominio.it">
-        </div>
-        <div>
-          <label>Password SMTP <span id="smtp-password-hint" style="color:#94a3b8;font-weight:normal"></span></label>
-          <input id="smtp-password" type="password" placeholder="lascia vuoto per non cambiarla">
-        </div>
-        <div>
-          <label>Indirizzo mittente</label>
-          <input id="smtp-from" placeholder="es. report@tuodominio.it">
-        </div>
-      </div>
-      <div class="row">
-        <div style="flex:1">
-          <label>Destinatari report (separati da virgola)</label>
-          <input id="smtp-recipients" placeholder="es. tu@tuodominio.it, altro@tuodominio.it" style="width:100%">
-        </div>
-      </div>
-      <div class="row">
-        <button class="primary" onclick="saveSmtpSettings()">Salva</button>
-        <button onclick="sendReportNow()">Invia report ora (test)</button>
-      </div>
-    </div>
-  </section>
 </main>
   </div>
 </div>
@@ -415,7 +370,6 @@ function showPanel(name) {
   if (name === 'notifiche') { loadTenantOptions('notifica-tenant'); loadNotifications(); }
   if (name === 'inventario') { loadTenantOptions('inventario-tenant').then(loadInventory); }
   if (name === 'certificati') { loadCertificates(); }
-    if (name === 'impostazioni') { loadSmtpSettings(); }
   if (name === 'archivi') { loadTenantOptions('archivi-tenant').then(loadArchivi); }
 }
 
@@ -785,46 +739,6 @@ async function loadDeviceDashboard() {
       container.appendChild(section);
     });
     showError('');
-  } catch (e) { showError(e.message); }
-}
-
-// --- Impostazioni ---
-async function loadSmtpSettings() {
-  try {
-    const s = await api('/_authgate/dashboard/settings/smtp');
-    document.getElementById('smtp-host').value = s.smtp_host || '';
-    document.getElementById('smtp-port').value = s.smtp_port || 587;
-    document.getElementById('smtp-user').value = s.smtp_user || '';
-    document.getElementById('smtp-from').value = s.smtp_from || '';
-    document.getElementById('smtp-tls').checked = !!s.smtp_use_tls;
-    document.getElementById('smtp-recipients').value = s.report_recipients || '';
-    document.getElementById('smtp-password-hint').textContent = s.smtp_password_set ? '(già impostata)' : '(non impostata)';
-    showError('');
-  } catch (e) { showError(e.message); }
-}
-
-async function saveSmtpSettings() {
-  try {
-    await api('/_authgate/dashboard/settings/smtp', { method: 'POST', body: JSON.stringify({
-      smtp_host: document.getElementById('smtp-host').value.trim(),
-      smtp_port: parseInt(document.getElementById('smtp-port').value || '587', 10),
-      smtp_user: document.getElementById('smtp-user').value.trim(),
-      smtp_password: document.getElementById('smtp-password').value,
-      smtp_from: document.getElementById('smtp-from').value.trim(),
-      smtp_use_tls: document.getElementById('smtp-tls').checked,
-      report_recipients: document.getElementById('smtp-recipients').value.trim(),
-    }) });
-    document.getElementById('smtp-password').value = '';
-    showError('');
-    loadSmtpSettings();
-  } catch (e) { showError(e.message); }
-}
-
-async function sendReportNow() {
-  try {
-    const result = await api('/_authgate/dashboard/send-nightly-report-now', { method: 'POST' });
-    showError('');
-    alert('Report inviato a: ' + result.sent_to.join(', '));
   } catch (e) { showError(e.message); }
 }
 

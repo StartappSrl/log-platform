@@ -44,3 +44,16 @@ class FailedLogin(db.Model):
     username = db.Column(db.String(120), index=True)
     ip = db.Column(db.String(64))
     at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class SmtpSettings(db.Model):
+    __tablename__ = "smtp_settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    smtp_host = db.Column(db.String(255), nullable=True)
+    smtp_port = db.Column(db.Integer, nullable=True, default=587)
+    smtp_user = db.Column(db.String(255), nullable=True)
+    smtp_password = db.Column(db.String(255), nullable=True)
+    smtp_from = db.Column(db.String(255), nullable=True)
+    smtp_use_tls = db.Column(db.Boolean, nullable=False, default=True)
+    report_recipients = db.Column(db.String(1000), nullable=True)
+

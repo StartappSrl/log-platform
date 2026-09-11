@@ -488,3 +488,96 @@ def device_dashboard_all_route():
             "total_messages_today": data["total_messages_today"],
         })
     return jsonify(result)
+
+from .models import SmtpSettings
+
+
+def _get_smtp_settings() -> SmtpSettings:
+    s = SmtpSettings.query.get(1)
+    if not s:
+        s = SmtpSettings(id=1, smtp_use_tls=True)
+        db.session.add(s)
+        db.session.commit()
+    return s
+
+
+@dash.get("/settings/smtp")
+@admin_required
+def get_smtp_settings_route():
+    s = _get_smtp_settings()
+    return jsonify({
+        "smtp_host": s.smtp_host or "",
+        "smtp_port": s.smtp_port or 587,
+        "smtp_user": s.smtp_user or "",
+        # la password non si rimanda mai indietro in chiaro - solo se e' impostata o no
+        "smtp_password_set": bool(s.smtp_password),
+        "smtp_from": s.smtp_from or "",
+        "smtp_use_tls": s.smtp_use_tls,
+        "report_recipients": s.report_recipients or "",
+    })
+
+
+@dash.post("/settings/smtp")
+@admin_required
+@csrf_protect
+def save_smtp_settings_route():
+    data = request.get_json(force=True, silent=True) or {}
+    s = _get_smtp_settings()
+
+    s.smtp_host = (data.get("smtp_host") or "").strip() or None
+    s.smtp_port = int(data.get("smtp_port") or 587)
+    s.smtp_user = (data.get("smtp_user") or "").strip() or None
+    s.smtp_from = (data.get("smtp_from") or "").strip() or None
+    s.smtp_use_tls = bool(data.get("smtp_use_tls", True))
+    s.report_recipients = (data.get("report_recipients") or "").strip() or None
+
+    # la password si aggiorna SOLO se ne viene mandata una nuova (non vuota) -
+    # cosi' non serve reinserirla ogni volta solo per cambiare un altro campo
+    new_password = data.get("smtp_password")
+    if new_password:
+        s.smtp_password = new_password
+
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@dash.post("/send-nightly-report-now")
+@admin_required
+@csrf_protect
+def send_nightly_report_now_route():
+    """Invia subito il report (stessa logica dello script per il cron),
+    utile per testare la configurazione SMTP senza aspettare la notte."""
+    from .nightly_report import build_tenant_report_data, render_donut_chart_png, build_nightly_report_html
+    from .email_sender import send_html_email_with_images
+    from datetime import datetime, timezone
+
+    settings = _get_smtp_settings()
+    if not settings.smtp_host or not settings.report_recipients:
+        return jsonify(error="SMTP non configurato o nessun destinatario impostato (vai in Impostazioni)"), 400
+
+    recipients = [r.strip() for r in settings.report_recipients.split(",") if r.strip()]
+
+    tenants = Tenant.query.order_by(Tenant.name).all()
+    if not tenants:
+        return jsonify(error="nessun cliente configurato"), 400
+
+    reports = [build_tenant_report_data(t.name, t.display_name or t.name, t.graylog_stream_id)
+               for t in tenants]
+
+    generated_at = datetime.now(timezone.utc)
+    html = build_nightly_report_html(reports, generated_at=generated_at)
+    images = {f"chart{i}": render_donut_chart_png(r["devices"]) for i, r in enumerate(reports)}
+    subject = f"Report log notturno (test manuale) — {generated_at.strftime('%d/%m/%Y %H:%M')}"
+
+    try:
+        send_html_email_with_images(
+            subject, html, recipients,
+            smtp_host=settings.smtp_host, smtp_port=settings.smtp_port or 587,
+            smtp_user=settings.smtp_user or "", smtp_password=settings.smtp_password or "",
+            smtp_from=settings.smtp_from or "", smtp_use_tls=settings.smtp_use_tls,
+            inline_images=images,
+        )
+    except Exception as e:
+        return jsonify(error=f"invio fallito: {e}"), 502
+
+    return jsonify(ok=True, sent_to=recipients)
