@@ -22,10 +22,17 @@
 
 set -euo pipefail
 
-BACKUP_DIR="${BACKUP_DIR:-/root/logmanager-backups}"
+BACKUP_DIR="${BACKUP_DIR:-/var/lib/logplatform-backups}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
 STAMP=$(date +%Y%m%d-%H%M%S)
 DEST="${BACKUP_DIR}/${STAMP}"
+mkdir -p "$BACKUP_DIR"
+# 711: serve il permesso di ATTRAVERSAMENTO su ogni cartella del percorso
+# perche' gli utenti dei vari moduli (mariadb, mongodb, auth) raggiungano
+# $DEST piu' sotto quando lanciano i loro comandi - 711 permette di
+# attraversare ma non di elencare il contenuto di questa cartella
+# principale, un compromesso ragionevole.
+chmod 711 "$BACKUP_DIR"
 mkdir -p "$DEST"
 
 echo "[$STAMP] Inizio backup in $DEST"
@@ -52,7 +59,11 @@ done
 
 run_as() {
     local instance="$1"; shift
-    sudo -u "$instance" XDG_RUNTIME_DIR="/run/user/$(id -u "$instance")" "$@"
+    # cd in una cartella accessibile a tutti PRIMA di sudo -u, altrimenti
+    # fallisce con "cannot chdir" se lanciato da una cartella di root
+    # (es. dentro il repository) - stesso problema incontrato piu' volte
+    # con i comandi manuali in questa sessione.
+    (cd /tmp && sudo -u "$instance" XDG_RUNTIME_DIR="/run/user/$(id -u "$instance")" "$@")
 }
 
 # --- MariaDB: dump completo (utenti, tenant, impostazioni SMTP, audit log) ---
@@ -78,19 +89,21 @@ if [[ -n "$MONGODB_INSTANCE" ]]; then
 fi
 
 # --- Volume della CA (certificati, chiave privata della CA) ---
+# --- Volume della CA e degli archivi: uso 'podman exec' dentro il
+# container auth-service GIA' in esecuzione (che ha gia' accesso
+# legittimo a questi volumi tramite i propri mount), invece di un nuovo
+# container con bind-mount ad-hoc - niente problemi di rietichettatura
+# SELinux, stesso principio che ha gia' funzionato per MariaDB/MongoDB
+# (stream diretto via stdout, nessun volume temporaneo). ---
 if [[ -n "$AUTH_INSTANCE" ]]; then
     echo "[$STAMP] Backup volume CA..."
-    run_as "$AUTH_INSTANCE" podman run --rm \
-        -v logplatform-auth-ca:/data:ro \
-        -v "${DEST}:/backup" \
-        alpine tar -czf /backup/ca-volume.tar.gz -C /data . \
+    run_as "$AUTH_INSTANCE" podman exec logplatform-auth tar -czf - -C /data/ca . \
+        > "${DEST}/ca-volume.tar.gz" \
         || echo "ATTENZIONE: backup del volume CA fallito." >&2
 
     echo "[$STAMP] Backup volume archivi caricati..."
-    run_as "$AUTH_INSTANCE" podman run --rm \
-        -v logplatform-auth-archives:/data:ro \
-        -v "${DEST}:/backup" \
-        alpine tar -czf /backup/archives-volume.tar.gz -C /data . \
+    run_as "$AUTH_INSTANCE" podman exec logplatform-auth tar -czf - -C /data/archives . \
+        > "${DEST}/archives-volume.tar.gz" \
         || echo "ATTENZIONE: backup del volume archivi fallito (puo' essere molto grande - normale se impiega tempo)." >&2
 fi
 
@@ -109,4 +122,13 @@ echo "[$STAMP] Pulizia backup più vecchi di ${RETENTION_DAYS} giorni..."
 find "$BACKUP_DIR" -maxdepth 1 -type d -mtime "+${RETENTION_DAYS}" -exec rm -rf {} \; 2>/dev/null || true
 
 echo "[$STAMP] Backup completato in ${DEST}"
+
+# Richiude i permessi ora che tutti i file sono stati scritti - un dump
+# completo di MariaDB contiene password con hash, non deve restare
+# leggibile da chiunque anche solo per il tempo tra un'esecuzione e l'altra.
+# (chmod separato per file e cartelle: 600 su una cartella toglierebbe
+# anche il permesso di attraversarla)
+find "$DEST" -type f -exec chmod 600 {} \; 2>/dev/null || true
+find "$DEST" -type d -exec chmod 700 {} \; 2>/dev/null || true
+
 du -sh "${DEST}" 2>/dev/null || true
