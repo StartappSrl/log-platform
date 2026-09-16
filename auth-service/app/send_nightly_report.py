@@ -15,6 +15,7 @@ from .models import db, Tenant, SmtpSettings
 from .nightly_report import build_tenant_report_data, render_donut_chart_png, build_nightly_report_html
 from .email_sender import send_html_email_with_images
 from . import platform_health as ph
+from . import cert_ledger
 
 
 def main():
@@ -40,7 +41,9 @@ def main():
 
         generated_at = datetime.now(timezone.utc)
         health = ph.check_platform_health()
-        html = build_nightly_report_html(reports, generated_at=generated_at, platform_health=health)
+        expiring_certs = cert_ledger.get_certificates_expiring_soon(days_threshold=30)
+        html = build_nightly_report_html(reports, generated_at=generated_at, platform_health=health,
+                                           expiring_certs=expiring_certs)
         images = {f"chart{i}": render_donut_chart_png(r["devices"]) for i, r in enumerate(reports)}
         subject = f"Report log notturno — {generated_at.strftime('%d/%m/%Y')}"
 

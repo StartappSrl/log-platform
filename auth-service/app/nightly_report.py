@@ -73,13 +73,32 @@ def render_donut_chart_png(devices: list) -> bytes:
 
 
 def build_nightly_report_html(tenant_reports: list, generated_at: datetime | None = None,
-                                platform_health: dict | None = None) -> str:
+                                platform_health: dict | None = None,
+                                expiring_certs: list | None = None) -> str:
     """Costruisce l'HTML completo del report - un blocco per cliente, con
     tabella host e un riferimento all'immagine del grafico (incorporata
     separatamente via Content-ID, vedi email_sender.py). Se fornito,
-    include anche un riepilogo dello stato della piattaforma stessa."""
+    include anche un riepilogo dello stato della piattaforma stessa e i
+    certificati agent in scadenza."""
     generated_at = generated_at or datetime.now(timezone.utc)
     data_str = generated_at.strftime("%d/%m/%Y")
+
+    certs_html = ""
+    if expiring_certs:
+        cert_rows = "".join(
+            f"<tr><td style='padding:3px 8px'>{c['common_name']}</td>"
+            f"<td style='padding:3px 8px;text-align:right'>"
+            f"{'SCADUTO' if c['days_remaining'] < 0 else str(c['days_remaining']) + ' giorni'}</td></tr>"
+            for c in expiring_certs
+        )
+        certs_html = f"""
+        <div style="background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:6px;margin-bottom:16px">
+          <b>Certificati agent in scadenza (o già scaduti) - vanno rigenerati:</b>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px">
+            {cert_rows}
+          </table>
+        </div>
+        """
 
     health_html = ""
     if platform_health:
@@ -163,6 +182,7 @@ def build_nightly_report_html(tenant_reports: list, generated_at: datetime | Non
     <html><body style="font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#f8fafc;margin:0;padding:20px">
       <h1 style="font-size:18px;color:#1e293b">Report log — {data_str}</h1>
       {health_html}
+      {certs_html}
       {body}
       <p style="color:#94a3b8;font-size:11px;margin-top:20px">Generato automaticamente da Log Platform.</p>
     </body></html>

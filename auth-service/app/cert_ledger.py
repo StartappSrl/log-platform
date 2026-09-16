@@ -126,3 +126,35 @@ def generate_crl_pem(validity_days: int = 15) -> str:
 
     crl = builder.sign(private_key=ca_key, algorithm=hashes.SHA256())
     return crl.public_bytes(serialization.Encoding.PEM).decode()
+# --- Da aggiungere a app/cert_ledger.py (in fondo al file) ---
+
+CERT_VALIDITY_DAYS = 825  # deve corrispondere esattamente a ca_manager.py issue_certificate()
+
+
+def get_certificates_expiring_soon(days_threshold: int = 30) -> list:
+    """Certificati (non revocati) che scadranno entro 'days_threshold'
+    giorni - calcolato da issued_at + CERT_VALIDITY_DAYS, dato che non
+    conserviamo il certificato completo dopo l'emissione, solo i suoi
+    metadati nel registro."""
+    now = datetime.now(timezone.utc)
+    cutoff = now + timedelta(days=days_threshold)
+
+    result = []
+    for cert in list_issued_certificates():
+        if cert["revoked"]:
+            continue
+        try:
+            issued_at = datetime.fromisoformat(cert["issued_at"])
+        except (ValueError, TypeError):
+            continue
+        expires_at = issued_at + timedelta(days=CERT_VALIDITY_DAYS)
+        if expires_at <= cutoff:
+            days_remaining = (expires_at - now).days
+            result.append({
+                "common_name": cert["common_name"],
+                "serial_number": cert["serial_number"],
+                "is_server": bool(cert["is_server"]),
+                "expires_at": expires_at.isoformat(),
+                "days_remaining": days_remaining,
+            })
+    return sorted(result, key=lambda x: x["days_remaining"])
