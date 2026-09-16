@@ -22,6 +22,13 @@
 
 set -euo pipefail
 
+FAILURES=()
+record_failure() {
+    local msg="$1"
+    echo "ATTENZIONE: $msg" >&2
+    FAILURES+=("$msg")
+}
+
 BACKUP_DIR="${BACKUP_DIR:-/var/lib/logplatform-backups}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
 STAMP=$(date +%Y%m%d-%H%M%S)
@@ -53,7 +60,7 @@ GATE_INSTANCE=$(find_instance "logplatform-gate")
 
 for name in MARIADB_INSTANCE MONGODB_INSTANCE AUTH_INSTANCE GRAYLOG_INSTANCE GATE_INSTANCE; do
     if [[ -z "${!name}" ]]; then
-        echo "ATTENZIONE: non ho trovato l'istanza per $name - quella parte del backup verra' saltata." >&2
+        record_failure "non ho trovato l'istanza per $name - quella parte del backup e' stata saltata."
     fi
 done
 
@@ -74,9 +81,9 @@ if [[ -n "$MARIADB_INSTANCE" ]]; then
     if [[ -n "$MARIADB_ROOT_PASSWORD" ]]; then
         run_as "$MARIADB_INSTANCE" podman exec logplatform-mariadb \
             mariadb-dump -u root -p"${MARIADB_ROOT_PASSWORD}" --all-databases \
-            > "${DEST}/mariadb-all.sql" || echo "ATTENZIONE: dump MariaDB fallito." >&2
+            > "${DEST}/mariadb-all.sql" || record_failure "dump MariaDB fallito."
     else
-        echo "ATTENZIONE: password root MariaDB non trovata in secrets.env - dump saltato." >&2
+        record_failure "password root MariaDB non trovata in secrets.env - dump saltato."
     fi
 fi
 
@@ -85,7 +92,7 @@ if [[ -n "$MONGODB_INSTANCE" ]]; then
     echo "[$STAMP] Backup MongoDB/Graylog ($MONGODB_INSTANCE)..."
     run_as "$MONGODB_INSTANCE" podman exec logplatform-mongodb \
         mongodump --archive > "${DEST}/mongodb-graylog.archive" \
-        || echo "ATTENZIONE: dump MongoDB fallito." >&2
+        || record_failure "dump MongoDB fallito."
 fi
 
 # --- Volume della CA (certificati, chiave privata della CA) ---
@@ -99,12 +106,12 @@ if [[ -n "$AUTH_INSTANCE" ]]; then
     echo "[$STAMP] Backup volume CA..."
     run_as "$AUTH_INSTANCE" podman exec logplatform-auth tar -czf - -C /data/ca . \
         > "${DEST}/ca-volume.tar.gz" \
-        || echo "ATTENZIONE: backup del volume CA fallito." >&2
+        || record_failure "backup del volume CA fallito."
 
     echo "[$STAMP] Backup volume archivi caricati..."
     run_as "$AUTH_INSTANCE" podman exec logplatform-auth tar -czf - -C /data/archives . \
         > "${DEST}/archives-volume.tar.gz" \
-        || echo "ATTENZIONE: backup del volume archivi fallito (puo' essere molto grande - normale se impiega tempo)." >&2
+        || record_failure "backup del volume archivi fallito."
 fi
 
 # --- File di stato/segreti di ogni modulo (necessari per ricostruire la
@@ -132,3 +139,20 @@ find "$DEST" -type f -exec chmod 600 {} \; 2>/dev/null || true
 find "$DEST" -type d -exec chmod 700 {} \; 2>/dev/null || true
 
 du -sh "${DEST}" 2>/dev/null || true
+
+if [[ ${#FAILURES[@]} -gt 0 ]]; then
+    echo "[$STAMP] ${#FAILURES[@]} problema/i durante il backup, invio avviso..."
+    if [[ -n "$AUTH_INSTANCE" ]]; then
+        BODY="Il backup del $(date '+%d/%m/%Y %H:%M') ha avuto ${#FAILURES[@]} problema/i:
+
+$(printf ' - %s\n' "${FAILURES[@]}")
+
+Il backup e' comunque completato per le parti riuscite, in ${DEST}.
+Controlla il file manualmente prima di fidartene per un ripristino."
+        run_as "$AUTH_INSTANCE" podman exec logplatform-auth \
+            python3 -m app.send_alert_email "Backup incompleto su $(hostname)" "$BODY" \
+            || echo "ATTENZIONE: non sono riuscito nemmeno a mandare l'avviso del fallimento (vedi sopra)." >&2
+    else
+        echo "ATTENZIONE: istanza auth non trovata, impossibile inviare l'avviso di backup fallito." >&2
+    fi
+fi

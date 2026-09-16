@@ -312,7 +312,6 @@
       </div>
       <a id="archivi-download-day" href="#" class="primary" style="text-decoration:none;padding:.55rem 1.1rem;border-radius:6px;font-weight:600">Scarica giorno</a>
     </div>
-    <div class="row"><input id="archivi-search" placeholder="Cerca host, sorgente, giorno..." oninput="filterArchivi()" style="width:280px"></div>
     <table id="archivi-table">
       <thead><tr>
         <th>Host</th><th>Sorgente</th><th>Giorno</th><th>Dimensione</th>
@@ -321,7 +320,6 @@
       <tbody></tbody>
     </table>
     <div class="empty" id="archivi-empty" style="display:none">Nessun archivio caricato ancora per questo cliente.</div>
-    <div id="archivi-pagination" style="margin-top:.5rem"></div>
   </section>
 
 
@@ -380,7 +378,6 @@
     <div class="card-form">
       <h3>Log di controllo (ultime azioni amministrative)</h3>
       <button onclick="loadAuditLog()">Aggiorna</button>
-      <div class="row"><input id="audit-search" placeholder="Cerca utente, azione, dettagli..." oninput="filterAudit()" style="width:280px"></div>
       <table id="audit-log-table" style="margin-top:1rem">
         <thead><tr><th>Quando</th><th>Utente</th><th>Azione</th><th>Dettagli</th><th>IP</th></tr></thead>
         <tbody></tbody>
@@ -422,7 +419,6 @@
         <button class="primary" onclick="createUser()">Crea utente</button>
       </div>
     </div>
-    <div class="row"><input id="users-search" placeholder="Cerca utente o cliente..." oninput="filterUsers()" style="width:280px"></div>
     <table id="users-table">
       <thead><tr><th>Username</th><th>Cliente</th><th>Stato</th><th>MFA configurata</th><th>Azioni</th></tr></thead>
       <tbody></tbody>
@@ -757,42 +753,6 @@ function updateDayDownloadLink() {
     '&day=' + encodeURIComponent(day);
 }
 
-let _archiviAllFiles = [];
-let _archiviPage = 1;
-
-function _renderArchiviTable(tenant) {
-  const search = document.getElementById('archivi-search') ? document.getElementById('archivi-search').value : '';
-  const filtered = filterRows(_archiviAllFiles, search, ['hostname', 'source_id', 'day']);
-  const { pageRows, currentPage, totalPages } = paginate(filtered, _archiviPage, 20);
-  _archiviPage = currentPage;
-  const tbody = document.querySelector('#archivi-table tbody');
-  tbody.innerHTML = '';
-  document.getElementById('archivi-empty').style.display = filtered.length ? 'none' : 'block';
-  pageRows.forEach(f => {
-    const tr = document.createElement('tr');
-    const caricatoIl = f.uploaded_at ? new Date(f.uploaded_at).toLocaleString() : '';
-    const marca = f.has_tsr ? 'Sì' : 'No';
-    const dlUrl = `/_authgate/dashboard/archives/download?tenant=${encodeURIComponent(tenant)}&hostname=${encodeURIComponent(f.hostname)}&source_id=${encodeURIComponent(f.source_id)}&day=${encodeURIComponent(f.day)}`;
-    tr.innerHTML = `<td>${f.hostname}</td><td>${f.source_id}</td><td>${f.day}</td>
-      <td>${formatSize(f.size_bytes)}</td><td>${caricatoIl}</td><td>${marca}</td>
-      <td><a href="${dlUrl}">Download</a></td>`;
-    tbody.appendChild(tr);
-  });
-  renderPaginationControls('archivi-pagination', totalPages, currentPage, 'goToArchiviPage');
-}
-
-function goToArchiviPage(p) {
-  _archiviPage = p;
-  const tenant = document.getElementById('archivi-tenant').value;
-  _renderArchiviTable(tenant);
-}
-
-function filterArchivi() {
-  _archiviPage = 1;
-  const tenant = document.getElementById('archivi-tenant').value;
-  _renderArchiviTable(tenant);
-}
-
 async function loadArchivi() {
   const tenant = document.getElementById('archivi-tenant').value;
   if (!tenant) return;
@@ -807,9 +767,20 @@ async function loadArchivi() {
   } catch (e) { /* non blocca il resto della schermata */ }
 
   try {
-    _archiviAllFiles = await api('/_authgate/dashboard/archives?tenant=' + encodeURIComponent(tenant));
-    _archiviPage = 1;
-    _renderArchiviTable(tenant);
+    const files = await api('/_authgate/dashboard/archives?tenant=' + encodeURIComponent(tenant));
+    const tbody = document.querySelector('#archivi-table tbody');
+    tbody.innerHTML = '';
+    document.getElementById('archivi-empty').style.display = files.length ? 'none' : 'block';
+    files.forEach(f => {
+      const tr = document.createElement('tr');
+      const caricatoIl = f.uploaded_at ? new Date(f.uploaded_at).toLocaleString() : '';
+      const marca = f.has_tsr ? 'Sì' : 'No';
+      const dlUrl = `/_authgate/dashboard/archives/download?tenant=${encodeURIComponent(tenant)}&hostname=${encodeURIComponent(f.hostname)}&source_id=${encodeURIComponent(f.source_id)}&day=${encodeURIComponent(f.day)}`;
+      tr.innerHTML = `<td>${f.hostname}</td><td>${f.source_id}</td><td>${f.day}</td>
+        <td>${formatSize(f.size_bytes)}</td><td>${caricatoIl}</td><td>${marca}</td>
+        <td><a href="${dlUrl}">Download</a></td>`;
+      tbody.appendChild(tr);
+    });
     showError('');
   } catch (e) { showError(e.message); }
 }
@@ -935,40 +906,24 @@ async function changeOwnPassword() {
   } catch (e) { showError(e.message); }
 }
 
-let _usersAll = [];
-let _usersPage = 1;
-
-function _renderUsersTable() {
-  const search = document.getElementById('users-search') ? document.getElementById('users-search').value : '';
-  const filtered = filterRows(_usersAll, search, ['username', 'tenant']);
-  const { pageRows, currentPage, totalPages } = paginate(filtered, _usersPage, 20);
-  _usersPage = currentPage;
-  const tbody = document.querySelector('#users-table tbody');
-  tbody.innerHTML = '';
-  pageRows.forEach(u => {
-    const tr = document.createElement('tr');
-    const stato = u.is_active ? 'Attivo' : 'Disattivato';
-    const mfa = u.mfa_confirmed ? 'Sì' : 'No';
-    tr.innerHTML = `<td>${u.username}</td><td>${u.tenant || '(amministratore)'}</td>
-      <td>${stato}</td><td>${mfa}</td>
-      <td>
-        <a href="#" onclick="toggleUserActive(${u.id});return false;">${u.is_active ? 'Disattiva' : 'Riattiva'}</a>
-        &nbsp;|&nbsp;
-        <a href="#" onclick="resetUserMfa(${u.id});return false;">Reset MFA</a>
-      </td>`;
-    tbody.appendChild(tr);
-  });
-  renderPaginationControls('users-pagination', totalPages, currentPage, 'goToUsersPage');
-}
-
-function goToUsersPage(p) { _usersPage = p; _renderUsersTable(); }
-function filterUsers() { _usersPage = 1; _renderUsersTable(); }
-
 async function loadUsers() {
   try {
-    _usersAll = await api('/_authgate/dashboard/users');
-    _usersPage = 1;
-    _renderUsersTable();
+    const users = await api('/_authgate/dashboard/users');
+    const tbody = document.querySelector('#users-table tbody');
+    tbody.innerHTML = '';
+    users.forEach(u => {
+      const tr = document.createElement('tr');
+      const stato = u.is_active ? 'Attivo' : 'Disattivato';
+      const mfa = u.mfa_confirmed ? 'Sì' : 'No';
+      tr.innerHTML = `<td>${u.username}</td><td>${u.tenant || '(amministratore)'}</td>
+        <td>${stato}</td><td>${mfa}</td>
+        <td>
+          <a href="#" onclick="toggleUserActive(${u.id});return false;">${u.is_active ? 'Disattiva' : 'Riattiva'}</a>
+          &nbsp;|&nbsp;
+          <a href="#" onclick="resetUserMfa(${u.id});return false;">Reset MFA</a>
+        </td>`;
+      tbody.appendChild(tr);
+    });
     showError('');
   } catch (e) { showError(e.message); }
 }
@@ -1004,34 +959,18 @@ async function resetUserMfa(id) {
 }
 
 // --- Log di controllo ---
-let _auditAll = [];
-let _auditPage = 1;
-
-function _renderAuditTable() {
-  const search = document.getElementById('audit-search') ? document.getElementById('audit-search').value : '';
-  const filtered = filterRows(_auditAll, search, ['username', 'action', 'details', 'ip']);
-  const { pageRows, currentPage, totalPages } = paginate(filtered, _auditPage, 25);
-  _auditPage = currentPage;
-  const tbody = document.querySelector('#audit-log-table tbody');
-  tbody.innerHTML = '';
-  pageRows.forEach(e => {
-    const tr = document.createElement('tr');
-    const quando = e.created_at ? new Date(e.created_at).toLocaleString() : '';
-    tr.innerHTML = `<td>${quando}</td><td>${e.username}</td><td>${e.action}</td>
-      <td>${e.details || ''}</td><td>${e.ip || ''}</td>`;
-    tbody.appendChild(tr);
-  });
-  renderPaginationControls('audit-pagination', totalPages, currentPage, 'goToAuditPage');
-}
-
-function goToAuditPage(p) { _auditPage = p; _renderAuditTable(); }
-function filterAudit() { _auditPage = 1; _renderAuditTable(); }
-
 async function loadAuditLog() {
   try {
-    _auditAll = await api('/_authgate/dashboard/audit-log');
-    _auditPage = 1;
-    _renderAuditTable();
+    const entries = await api('/_authgate/dashboard/audit-log');
+    const tbody = document.querySelector('#audit-log-table tbody');
+    tbody.innerHTML = '';
+    entries.forEach(e => {
+      const tr = document.createElement('tr');
+      const quando = e.created_at ? new Date(e.created_at).toLocaleString() : '';
+      tr.innerHTML = `<td>${quando}</td><td>${e.username}</td><td>${e.action}</td>
+        <td>${e.details || ''}</td><td>${e.ip || ''}</td>`;
+      tbody.appendChild(tr);
+    });
     showError('');
   } catch (e) { showError(e.message); }
 }
@@ -1056,31 +995,6 @@ async function deleteTenant(name) {
           `certificati revocati: ${result.certs_revoked}, utenti disattivati: ${result.users_deactivated}.`);
     loadTenants();
   } catch (e) { showError(e.message); }
-}
-
-// --- Ricerca/paginazione tabelle (funzioni pure, riusabili) ---
-function filterRows(rows, searchTerm, fields) {
-  if (!searchTerm) return rows;
-  const term = searchTerm.toLowerCase();
-  return rows.filter(row => fields.some(f => String(row[f] || '').toLowerCase().includes(term)));
-}
-
-function paginate(rows, page, perPage) {
-  const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
-  const clampedPage = Math.min(Math.max(1, page), totalPages);
-  const start = (clampedPage - 1) * perPage;
-  return { pageRows: rows.slice(start, start + perPage), currentPage: clampedPage, totalPages, totalItems: rows.length };
-}
-
-function renderPaginationControls(containerId, totalPages, currentPage, onPageChange) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
-  if (totalPages <= 1) { el.innerHTML = ''; return; }
-  let html = '';
-  for (let p = 1; p <= totalPages; p++) {
-    html += `<button style="margin:0 2px;${p === currentPage ? 'font-weight:bold' : ''}" onclick="(${onPageChange})(${p})">${p}</button>`;
-  }
-  el.innerHTML = html;
 }
 
 // --- Avvio ---
