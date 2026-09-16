@@ -57,3 +57,14 @@ class SmtpSettings(db.Model):
     smtp_use_tls = db.Column(db.Boolean, nullable=False, default=True)
     report_recipients = db.Column(db.String(1000), nullable=True)
 
+# --- Aggiunta a app/models.py ---
+
+class OfflineAlertState(db.Model):
+    __tablename__ = "offline_alert_state"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant = db.Column(db.String(120), nullable=False)
+    hostname = db.Column(db.String(255), nullable=False)
+    alerted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint("tenant", "hostname", name="uq_tenant_hostname_alert"),)

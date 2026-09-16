@@ -47,6 +47,16 @@ local_archive_dir = /var/lib/logplatform-agent/archive
 local_archive_upload_url = https://{PUBLIC_DOMAIN}/_authgate/archive-upload
 local_archive_upload_token = {upload_token}
 
+# Relay syslog (opzionale): fai da "traduttore" locale per dispositivi
+# che sanno mandare solo syslog (firewall, switch, NAS, altri server) -
+# loro parlano con QUESTA macchina sulla rete locale (mai con Internet
+# direttamente), e questo agent inoltra tutto attraverso lo stesso
+# canale cifrato usato per i suoi log. La porta 514 e' quella standard
+# ma richiede privilegi di root - se preferisci evitarlo, usa una porta
+# sopra 1024 (es. 1514/1515) e configura i dispositivi di conseguenza.
+# local_syslog_udp_port = 1514
+# local_syslog_tcp_port = 1515
+
 inventory_interval_hours = 24
 """
 

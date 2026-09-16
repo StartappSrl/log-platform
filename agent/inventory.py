@@ -261,6 +261,49 @@ def _windows_os_info():
 
 # -------------------------------------------------------------- comune ---
 
+def _windows_pending_updates():
+    """Interroga la Windows Update Agent API (via PowerShell) per gli
+    aggiornamenti in sospeso (non installati, non nascosti). Puo'
+    impiegare svariati secondi - non e' un controllo istantaneo, motivo
+    per cui ha un timeout largo e fallisce in modo silenzioso (lista
+    vuota) invece di bloccare tutto l'inventario se va storto o se
+    impiega troppo. NON testato su un vero Windows da me (nessun
+    ambiente Windows disponibile qui) - verificare dal vivo prima di
+    fidarsi ciecamente del risultato."""
+    ps_script = (
+        "try { "
+        "$session = New-Object -ComObject Microsoft.Update.Session; "
+        "$searcher = $session.CreateUpdateSearcher(); "
+        "$result = $searcher.Search('IsInstalled=0 and IsHidden=0'); "
+        "$updates = @(); "
+        "foreach ($u in $result.Updates) { "
+        "$updates += [PSCustomObject]@{ Title = $u.Title; KB = ($u.KBArticleIDs -join ','); "
+        "Important = [bool]$u.AutoSelectOnWebSites } "
+        "}; "
+        "$updates | ConvertTo-Json -Compress "
+        "} catch { Write-Output '[]' }"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            capture_output=True, text=True, timeout=180,
+        )
+        raw = result.stdout.strip()
+        if not raw:
+            return []
+        parsed = json.loads(raw)
+        # ConvertTo-Json ritorna un oggetto singolo (non una lista) se
+        # c'e' un solo elemento - normalizziamo sempre a lista
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+        return [
+            {"title": u.get("Title", ""), "kb": u.get("KB", ""), "important": bool(u.get("Important", False))}
+            for u in parsed
+        ]
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, json.JSONDecodeError, FileNotFoundError):
+        return []
+
+
 def collect_inventory(tenant: str, hostname: str) -> dict:
     """Ritorna lo snapshot di inventario completo per questa macchina."""
     is_windows = platform.system() == "Windows"
@@ -271,6 +314,7 @@ def collect_inventory(tenant: str, hostname: str) -> dict:
     network = _windows_network() if is_windows else _linux_network()
     software = _windows_software() if is_windows else _linux_software()
     os_info = _windows_os_info() if is_windows else _linux_os_info()
+    pending_updates = _safe(_windows_pending_updates, []) if is_windows else []
 
     return {
         "tenant": tenant,
@@ -283,6 +327,7 @@ def collect_inventory(tenant: str, hostname: str) -> dict:
         "network": network,
         "software_count": len(software),
         "software": software,
+        "pending_updates": pending_updates,
     }
 
 

@@ -25,11 +25,24 @@ def build_tenant_report_data(tenant_name: str, display_name: str, stream_id: str
     devices = data["devices"]
     total_messages = data["total_messages_today"]
 
+    # Aggiornamenti mancanti: viene dall'inventario (non dai log), un
+    # fallimento qui non deve far fallire tutto il resto del report.
+    pending_updates_by_host = {}
+    try:
+        hosts_inventory = gl.get_latest_inventory_per_host(stream_id)
+        for inv in hosts_inventory:
+            updates = inv.get("pending_updates") or []
+            if updates:
+                pending_updates_by_host[inv["hostname"]] = updates
+    except Exception:
+        pass
+
     return {
         "tenant": tenant_name,
         "display_name": display_name,
         "devices": devices,
         "total_messages": total_messages,
+        "pending_updates_by_host": pending_updates_by_host,
     }
 
 
@@ -59,12 +72,37 @@ def render_donut_chart_png(devices: list) -> bytes:
     return buf.getvalue()
 
 
-def build_nightly_report_html(tenant_reports: list, generated_at: datetime | None = None) -> str:
+def build_nightly_report_html(tenant_reports: list, generated_at: datetime | None = None,
+                                platform_health: dict | None = None) -> str:
     """Costruisce l'HTML completo del report - un blocco per cliente, con
     tabella host e un riferimento all'immagine del grafico (incorporata
-    separatamente via Content-ID, vedi email_sender.py)."""
+    separatamente via Content-ID, vedi email_sender.py). Se fornito,
+    include anche un riepilogo dello stato della piattaforma stessa."""
     generated_at = generated_at or datetime.now(timezone.utc)
     data_str = generated_at.strftime("%d/%m/%Y")
+
+    health_html = ""
+    if platform_health:
+        gl_ok = platform_health["graylog"]["ok"]
+        db_ok = platform_health["mariadb"]["ok"]
+        if gl_ok and db_ok:
+            health_html = (
+                '<p style="color:#16a34a;font-size:13px;margin:0 0 16px">'
+                '✓ Graylog e MariaDB rispondono correttamente.</p>'
+            )
+        else:
+            problems = []
+            if not gl_ok:
+                problems.append(f"Graylog: {platform_health['graylog']['error']}")
+            if not db_ok:
+                problems.append(f"MariaDB: {platform_health['mariadb']['error']}")
+            health_html = (
+                '<div style="background:#fee2e2;color:#991b1b;padding:10px 14px;'
+                'border-radius:6px;margin-bottom:16px;font-size:13px">'
+                '<b>Attenzione, problemi rilevati sulla piattaforma:</b><br>'
+                + "<br>".join(problems) + "</div>"
+            )
+
 
     blocks = []
     for i, r in enumerate(tenant_reports):
@@ -77,6 +115,20 @@ def build_nightly_report_html(tenant_reports: list, generated_at: datetime | Non
         )
         if not rows:
             rows = "<tr><td colspan='4' style='padding:8px;color:#94a3b8'>Nessun dispositivo ha inviato log</td></tr>"
+
+        updates_html = ""
+        if r.get("pending_updates_by_host"):
+            update_rows = "".join(
+                f"<tr><td style='padding:3px 8px'>{host}</td>"
+                f"<td style='padding:3px 8px'>{len(updates)} aggiornamenti in sospeso</td></tr>"
+                for host, updates in r["pending_updates_by_host"].items()
+            )
+            updates_html = f"""
+              <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;background:#fffbeb">
+                <tr><td colspan="2" style="padding:4px 8px;font-weight:bold;color:#92400e">Aggiornamenti mancanti</td></tr>
+                {update_rows}
+              </table>
+            """
 
         blocks.append(f"""
         <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
@@ -96,6 +148,7 @@ def build_nightly_report_html(tenant_reports: list, generated_at: datetime | Non
                 </tr>
                 {rows}
               </table>
+              {updates_html}
             </td>
           </tr>
         </table>
@@ -109,6 +162,7 @@ def build_nightly_report_html(tenant_reports: list, generated_at: datetime | Non
     return f"""
     <html><body style="font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#f8fafc;margin:0;padding:20px">
       <h1 style="font-size:18px;color:#1e293b">Report log — {data_str}</h1>
+      {health_html}
       {body}
       <p style="color:#94a3b8;font-size:11px;margin-top:20px">Generato automaticamente da Log Platform.</p>
     </body></html>

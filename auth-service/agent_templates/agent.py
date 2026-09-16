@@ -60,6 +60,29 @@ def tail_file(path: Path):
             yield line.rstrip("\n")
 
 
+import re
+
+_ERROR_PATTERN = re.compile(r"\b(error|critical|crit|fatal|failed|failure|exception|panic)\b", re.IGNORECASE)
+_WARNING_PATTERN = re.compile(r"\b(warn|warning|deprecat)\w*\b", re.IGNORECASE)
+
+
+def _guess_level_from_text(line: str) -> int:
+    """Indovina un livello di gravita' GELF (standard syslog: 3=errore,
+    4=avviso, 6=informativo) analizzando parole chiave comuni nel testo
+    della riga di log. Non e' un parser dei formati di log specifici
+    (es. non capisce codici di errore numerici propri di
+    un'applicazione) - e' un'euristica su parole comuni in inglese,
+    pensata per dare un minimo di segnale sui file di log generici
+    (es. syslog) che altrimenti arriverebbero sempre come 'informativo'.
+    Se la riga contiene sia 'error' sia 'warning', vince errore (piu'
+    grave, meglio segnalare per eccesso che perderlo)."""
+    if _ERROR_PATTERN.search(line):
+        return 3
+    if _WARNING_PATTERN.search(line):
+        return 4
+    return 6
+
+
 def follow(path_str: str, tenant: str, hostname: str, connect_args: tuple, sock_holder: dict,
            log_class: str | None = None, archiver: LocalArchiver | None = None):
     path = Path(path_str)
@@ -69,7 +92,8 @@ def follow(path_str: str, tenant: str, hostname: str, connect_args: tuple, sock_
     for line in tail_file(path):
         if archiver:
             archiver.write_line(line)
-        payload = build_gelf_message(tenant, hostname, line, extra=extra)
+        level = _guess_level_from_text(line)
+        payload = build_gelf_message(tenant, hostname, line, level=level, extra=extra)
         while True:
             try:
                 sock_holder["sock"].sendall(payload)
@@ -168,6 +192,18 @@ def main():
 
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
+
+    # --- Relay syslog (opzionale) ---
+    syslog_udp_port = s.getint("local_syslog_udp_port", fallback=0) or None
+    syslog_tcp_port = s.getint("local_syslog_tcp_port", fallback=0) or None
+    if syslog_udp_port or syslog_tcp_port:
+        from syslog_relay import start_syslog_relay
+        start_syslog_relay(
+            tenant=tenant, relay_hostname=hostname,
+            build_gelf_message_fn=build_gelf_message, sock_holder=sock_holder,
+            udp_port=syslog_udp_port, tcp_port=syslog_tcp_port,
+        )
+        print(f"Relay syslog attivo (UDP: {syslog_udp_port or 'no'}, TCP: {syslog_tcp_port or 'no'})")
 
     threads = []
     for p in log_files:

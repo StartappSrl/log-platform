@@ -581,3 +581,103 @@ def send_nightly_report_now_route():
         return jsonify(error=f"invio fallito: {e}"), 502
 
     return jsonify(ok=True, sent_to=recipients)
+# --- Da aggiungere a app/dashboard.py (in fondo al file) ---
+
+from . import platform_health
+
+
+@dash.get("/platform-health")
+@admin_required
+def platform_health_route():
+    return jsonify(platform_health.check_platform_health())
+# --- Da aggiungere a app/dashboard.py (in fondo al file) ---
+
+import bcrypt
+from .mfa import generate_secret
+
+
+@dash.get("/users")
+@admin_required
+def list_users_route():
+    users = User.query.order_by(User.username).all()
+    return jsonify([{
+        "id": u.id, "username": u.username, "tenant": u.tenant,
+        "is_active": u.is_active, "mfa_confirmed": u.mfa_confirmed,
+    } for u in users])
+
+
+@dash.post("/users")
+@admin_required
+@csrf_protect
+def create_user_route():
+    data = request.get_json(force=True, silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    tenant = (data.get("tenant") or "").strip() or None
+
+    if not username or not password:
+        return jsonify(error="username e password sono obbligatori"), 400
+    if len(password) < 8:
+        return jsonify(error="la password deve avere almeno 8 caratteri"), 400
+    if User.query.filter_by(username=username).first():
+        return jsonify(error="username già esistente"), 409
+    if tenant and not Tenant.query.filter_by(name=tenant).first():
+        return jsonify(error="tenant non trovato"), 400
+
+    u = User(
+        username=username,
+        password_hash=bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
+        totp_secret=generate_secret(),
+        tenant=tenant, is_active=True, mfa_confirmed=False,
+    )
+    db.session.add(u)
+    db.session.commit()
+    return jsonify(id=u.id, username=u.username), 201
+
+
+@dash.post("/users/<int:user_id>/toggle-active")
+@admin_required
+@csrf_protect
+def toggle_user_active_route(user_id):
+    u = User.query.get(user_id)
+    if not u:
+        return jsonify(error="utente non trovato"), 404
+    if u.id == g.current_user.id:
+        return jsonify(error="non puoi disattivare il tuo stesso account"), 400
+    u.is_active = not u.is_active
+    db.session.commit()
+    return jsonify(id=u.id, is_active=u.is_active)
+
+
+@dash.post("/users/<int:user_id>/reset-mfa")
+@admin_required
+@csrf_protect
+def reset_user_mfa_route(user_id):
+    """Per quando qualcuno perde il dispositivo con l'app di
+    autenticazione: rigenera il segreto e obbliga una nuova
+    configurazione MFA al prossimo login (mostra di nuovo il QR)."""
+    u = User.query.get(user_id)
+    if not u:
+        return jsonify(error="utente non trovato"), 404
+    u.totp_secret = generate_secret()
+    u.mfa_confirmed = False
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@dash.post("/change-password")
+@login_required
+@csrf_protect
+def change_own_password_route():
+    data = request.get_json(force=True, silent=True) or {}
+    current_password = data.get("current_password") or ""
+    new_password = data.get("new_password") or ""
+
+    if not bcrypt.checkpw(current_password.encode(), g.current_user.password_hash.encode()):
+        return jsonify(error="password attuale non corretta"), 403
+    if len(new_password) < 8:
+        return jsonify(error="la nuova password deve avere almeno 8 caratteri"), 400
+
+    g.current_user.password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    db.session.commit()
+    return jsonify(ok=True)

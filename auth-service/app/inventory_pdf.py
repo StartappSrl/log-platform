@@ -144,6 +144,25 @@ def build_inventory_pdf(inventory: dict, tenant: str, hostname: str) -> bytes:
         ]))
         story.append(t)
 
+    # --- Aggiornamenti mancanti (solo Windows, se presenti) ---
+    pending_updates = inventory.get("pending_updates") or []
+    if pending_updates:
+        story.append(Spacer(1, 0.4 * cm))
+        story.append(Paragraph(f"Aggiornamenti mancanti ({len(pending_updates)})", heading_style))
+        upd_rows = [["Priorità", "Aggiornamento", "KB"]]
+        for u in pending_updates:
+            priority = "Consigliato" if u.get("important") else "Facoltativo"
+            upd_rows.append([priority, u.get("title", "-"), u.get("kb", "-")])
+        t = Table(upd_rows, colWidths=[2.5 * cm, 11 * cm, 2.5 * cm])
+        t.setStyle(TableStyle([
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#333333")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7f7f7")]),
+        ]))
+        story.append(t)
+
     # --- Software ---
     software = inventory.get("software") or []
     story.append(PageBreak())

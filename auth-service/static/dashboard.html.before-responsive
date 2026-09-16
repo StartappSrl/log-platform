@@ -57,19 +57,6 @@
   .device-badge.warnings { background:#d97706; }
   .device-badge.ok { background:#16a34a; }
   .device-lastseen { font-size:.75rem; color:#94a3b8; min-width:90px; text-align:right; }
-  @media (max-width: 768px) {
-    .app-layout { flex-direction: column; }
-    .sidebar { width: 100%; flex-direction: row; align-items: center;
-               overflow-x: auto; padding: .5rem; }
-    .sidebar h1 { padding: 0 1rem 0 0; white-space: nowrap; }
-    .sidebar nav { flex-direction: row; flex: none; padding: 0; }
-    .sidebar nav button { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; }
-    .sidebar nav button.active { border-left-color: transparent; border-bottom-color: #3b82f6; }
-    .sidebar .who { border-top: none; border-left: 1px solid #334155; padding: .5rem 1rem;
-                    white-space: nowrap; margin-left: auto; }
-    main { padding: 1rem; }
-    .device-row { flex-wrap: wrap; }
-  }
 </style>
 </head>
 <body>
@@ -87,7 +74,6 @@
       <button data-panel="certificati" onclick="showPanel('certificati')">Certificati</button>
       <button data-panel="archivi" onclick="showPanel('archivi')">Archivi</button>
       <button data-panel="impostazioni" onclick="showPanel('impostazioni')">Impostazioni</button>
-      <button data-panel="utenti" onclick="showPanel('utenti')">Utenti</button>
     </nav>
     <div class="who">
       <div><span id="who-username"></span><span class="badge" id="who-tenant"></span></div>
@@ -375,46 +361,6 @@
       </div>
     </div>
   </section>
-
-  <section class="panel" id="panel-utenti">
-    <div class="card-form">
-      <h3>Cambia la tua password</h3>
-      <div class="row">
-        <div>
-          <label>Password attuale</label>
-          <input id="cp-current" type="password">
-        </div>
-        <div>
-          <label>Nuova password (min. 8 caratteri)</label>
-          <input id="cp-new" type="password">
-        </div>
-        <button class="primary" onclick="changeOwnPassword()">Cambia password</button>
-      </div>
-    </div>
-
-    <div class="card-form" id="user-management-card">
-      <h3>Nuovo utente</h3>
-      <div class="row">
-        <div>
-          <label>Username</label>
-          <input id="new-user-username" placeholder="es. mario.rossi">
-        </div>
-        <div>
-          <label>Password iniziale</label>
-          <input id="new-user-password" type="password">
-        </div>
-        <div>
-          <label>Cliente (vuoto = amministratore)</label>
-          <select id="new-user-tenant"><option value="">— Amministratore —</option></select>
-        </div>
-        <button class="primary" onclick="createUser()">Crea utente</button>
-      </div>
-    </div>
-    <table id="users-table">
-      <thead><tr><th>Username</th><th>Cliente</th><th>Stato</th><th>MFA configurata</th><th>Azioni</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </section>
 </main>
   </div>
 </div>
@@ -469,8 +415,7 @@ function showPanel(name) {
   if (name === 'notifiche') { loadTenantOptions('notifica-tenant'); loadNotifications(); }
   if (name === 'inventario') { loadTenantOptions('inventario-tenant').then(loadInventory); }
   if (name === 'certificati') { loadCertificates(); }
-      if (name === 'utenti') { loadTenantOptions('new-user-tenant').then(loadUsers); }
-  if (name === 'impostazioni') { loadSmtpSettings(); }
+    if (name === 'impostazioni') { loadSmtpSettings(); }
   if (name === 'archivi') { loadTenantOptions('archivi-tenant').then(loadArchivi); }
 }
 
@@ -880,72 +825,6 @@ async function sendReportNow() {
     const result = await api('/_authgate/dashboard/send-nightly-report-now', { method: 'POST' });
     showError('');
     alert('Report inviato a: ' + result.sent_to.join(', '));
-  } catch (e) { showError(e.message); }
-}
-
-// --- Utenti ---
-async function changeOwnPassword() {
-  const current_password = document.getElementById('cp-current').value;
-  const new_password = document.getElementById('cp-new').value;
-  try {
-    await api('/_authgate/dashboard/change-password', { method: 'POST',
-      body: JSON.stringify({ current_password, new_password }) });
-    document.getElementById('cp-current').value = '';
-    document.getElementById('cp-new').value = '';
-    showError('');
-    alert('Password cambiata con successo.');
-  } catch (e) { showError(e.message); }
-}
-
-async function loadUsers() {
-  try {
-    const users = await api('/_authgate/dashboard/users');
-    const tbody = document.querySelector('#users-table tbody');
-    tbody.innerHTML = '';
-    users.forEach(u => {
-      const tr = document.createElement('tr');
-      const stato = u.is_active ? 'Attivo' : 'Disattivato';
-      const mfa = u.mfa_confirmed ? 'Sì' : 'No';
-      tr.innerHTML = `<td>${u.username}</td><td>${u.tenant || '(amministratore)'}</td>
-        <td>${stato}</td><td>${mfa}</td>
-        <td>
-          <a href="#" onclick="toggleUserActive(${u.id});return false;">${u.is_active ? 'Disattiva' : 'Riattiva'}</a>
-          &nbsp;|&nbsp;
-          <a href="#" onclick="resetUserMfa(${u.id});return false;">Reset MFA</a>
-        </td>`;
-      tbody.appendChild(tr);
-    });
-    showError('');
-  } catch (e) { showError(e.message); }
-}
-
-async function createUser() {
-  const username = document.getElementById('new-user-username').value.trim();
-  const password = document.getElementById('new-user-password').value;
-  const tenant = document.getElementById('new-user-tenant').value;
-  try {
-    await api('/_authgate/dashboard/users', { method: 'POST',
-      body: JSON.stringify({ username, password, tenant }) });
-    document.getElementById('new-user-username').value = '';
-    document.getElementById('new-user-password').value = '';
-    showError('');
-    loadUsers();
-  } catch (e) { showError(e.message); }
-}
-
-async function toggleUserActive(id) {
-  try {
-    await api(`/_authgate/dashboard/users/${id}/toggle-active`, { method: 'POST' });
-    loadUsers();
-  } catch (e) { showError(e.message); }
-}
-
-async function resetUserMfa(id) {
-  if (!confirm('Resettare la MFA di questo utente? Dovrà riconfigurarla al prossimo accesso.')) return;
-  try {
-    await api(`/_authgate/dashboard/users/${id}/reset-mfa`, { method: 'POST' });
-    loadUsers();
-    alert('MFA resettata.');
   } catch (e) { showError(e.message); }
 }
 

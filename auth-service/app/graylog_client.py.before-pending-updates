@@ -198,7 +198,6 @@ def get_latest_inventory_per_host(stream_id: str, range_hours: int = 192, limit:
                 "disks": inv.get("disks"),
                 "network": inv.get("network"),
                 "software_count": inv.get("software_count"),
-                "pending_updates": inv.get("pending_updates") or [],
             }
     return sorted(latest_by_host.values(), key=lambda x: x["hostname"])
 
