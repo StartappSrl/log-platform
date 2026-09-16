@@ -71,6 +71,23 @@ else:
     SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 STATE_FILE = SCRIPT_DIR / "agent_state.json"
 
+# Quando il servizio parte tramite il Service Control Manager (non un
+# umano che lancia 'debug' da un terminale), sys.stdout/sys.stderr sono
+# None - qualunque print() o traceback.print_exception() li' dentro
+# solleva una SECONDA eccezione (AttributeError: 'NoneType' object has
+# no attribute 'write'), che MASCHERA l'errore originale: pywin32 stesso,
+# provando a loggare il vero errore, fallisce con un generico "The
+# instance's SvcRun() method failed / <Error getting traceback>" - il
+# messaggio visto nel Visualizzatore eventi, che da solo non dice nulla
+# della causa reale. Rediretti verso un file, il prossimo errore vero
+# comparira' li' per intero. Scoperto analizzando dal vivo un arresto
+# del servizio su un PC reale.
+if getattr(sys, "frozen", False):
+    if sys.stdout is None:
+        sys.stdout = open(SCRIPT_DIR / "agent-stdout.log", "a", buffering=1)
+    if sys.stderr is None:
+        sys.stderr = open(SCRIPT_DIR / "agent-stderr.log", "a", buffering=1)
+
 
 def _load_state() -> dict:
     if STATE_FILE.exists():
