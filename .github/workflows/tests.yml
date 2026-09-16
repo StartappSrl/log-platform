@@ -17,8 +17,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Installa pytest
-        run: pip install pytest --break-system-packages
+      - name: Installa le dipendenze
+        run: |
+          pip install pytest --break-system-packages
+          pip install -r auth-service/requirements.txt --break-system-packages
 
       - name: Esegui i test
+        env:
+          GRAYLOG_API_USER: test
+          GRAYLOG_API_PASSWORD: test
+          GRAYLOG_URL: http://127.0.0.1:0
         run: python3 -m pytest tests/ -v
