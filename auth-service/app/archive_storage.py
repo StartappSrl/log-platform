@@ -254,3 +254,23 @@ def prune_expired_archives(retention_months: int | None = None) -> int:
                 removed += 1
         conn.commit()
     return removed
+
+def delete_all_archives_for_tenant(tenant: str) -> int:
+    """Cancella TUTTI gli archivi caricati di un cliente (file su disco +
+    voci nel registro) - usato dalla cancellazione cliente. Ritorna il
+    numero di file rimossi."""
+    import shutil as _shutil
+
+    safe = lambda s: "".join(c if c.isalnum() or c in "-_." else "_" for c in s)
+    tenant_dir = ARCHIVE_DIR / safe(tenant)
+
+    with closing(_connect()) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM uploaded_days WHERE tenant = ?", (tenant,)).fetchone()[0]
+        conn.execute("DELETE FROM uploaded_days WHERE tenant = ?", (tenant,))
+        conn.execute("DELETE FROM tenant_tokens WHERE tenant = ?", (tenant,))
+        conn.commit()
+
+    if tenant_dir.exists():
+        _shutil.rmtree(tenant_dir)
+
+    return count

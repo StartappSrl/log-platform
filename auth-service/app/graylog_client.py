@@ -313,3 +313,15 @@ def get_device_dashboard_for_tenant(stream_id: str, range_minutes: int = 1440) -
         "devices": sorted(device_list, key=lambda x: x["hostname"]),
         "total_messages_today": total_today,
     }
+
+def delete_stream_and_index(stream_id: str, index_set_id: str) -> None:
+    """Cancella lo stream e l'index set di un tenant da Graylog - lo
+    stream va fermato PRIMA di essere cancellato (Graylog lo richiede),
+    l'index set va cancellato CON i suoi dati (delete_indices=true),
+    altrimenti resterebbero indici orfani sul disco."""
+    try:
+        _request("POST", f"/api/streams/{stream_id}/pause")
+    except GraylogError:
+        pass  # se e' gia' in pausa o non esiste piu', non e' un problema bloccante
+    _request("DELETE", f"/api/streams/{stream_id}")
+    _request("DELETE", f"/api/system/indices/index_sets/{index_set_id}?delete_indices=true")

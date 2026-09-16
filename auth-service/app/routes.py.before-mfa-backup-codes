@@ -5,7 +5,7 @@ import bcrypt
 from flask import Blueprint, current_app, jsonify, request, make_response
 
 from .models import db, User, FailedLogin
-from .mfa import generate_secret, provisioning_qr_base64, verify_code, generate_backup_codes, hash_backup_codes, verify_and_consume_backup_code
+from .mfa import generate_secret, provisioning_qr_base64, verify_code
 from .auth_utils import get_serializer, get_current_user
 
 bp = Blueprint("api", __name__, url_prefix="/_authgate")
@@ -77,31 +77,17 @@ def verify_mfa():
         db.session.commit()
         return jsonify(error="utente non valido"), 401
 
-    backup_codes_generated = None
     if not verify_code(user.totp_secret, code):
-        # Non e' un codice TOTP valido - proviamo se e' invece un codice
-        # di recupero (per chi ha perso il dispositivo con l'app MFA)
-        is_backup, remaining = verify_and_consume_backup_code(user.mfa_backup_codes, code)
-        if not is_backup:
-            db.session.add(FailedLogin(username=username, ip=ip))
-            db.session.commit()
-            return jsonify(error="codice MFA non valido"), 401
-        user.mfa_backup_codes = remaining
+        db.session.add(FailedLogin(username=username, ip=ip))
+        db.session.commit()
+        return jsonify(error="codice MFA non valido"), 401
 
     if not user.mfa_confirmed:
         user.mfa_confirmed = True
-        # Prima configurazione riuscita: genera i codici di recupero e
-        # mandali UNA SOLA VOLTA in risposta - dopo non saranno piu'
-        # recuperabili in chiaro (solo l'hash resta salvato).
-        backup_codes_generated = generate_backup_codes()
-        user.mfa_backup_codes = hash_backup_codes(backup_codes_generated)
     user.last_login_at = datetime.utcnow()
     db.session.commit()
 
-    resp_data = {"ok": True}
-    if backup_codes_generated:
-        resp_data["backup_codes"] = backup_codes_generated
-    resp = make_response(jsonify(resp_data))
+    resp = make_response(jsonify(ok=True))
     _set_session_cookie(resp, user.username)
     return resp
 

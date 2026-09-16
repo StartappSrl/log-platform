@@ -374,15 +374,6 @@
         <button onclick="sendReportNow()">Invia report ora (test)</button>
       </div>
     </div>
-
-    <div class="card-form">
-      <h3>Log di controllo (ultime azioni amministrative)</h3>
-      <button onclick="loadAuditLog()">Aggiorna</button>
-      <table id="audit-log-table" style="margin-top:1rem">
-        <thead><tr><th>Quando</th><th>Utente</th><th>Azione</th><th>Dettagli</th><th>IP</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
   </section>
 
   <section class="panel" id="panel-utenti">
@@ -479,7 +470,7 @@ function showPanel(name) {
   if (name === 'inventario') { loadTenantOptions('inventario-tenant').then(loadInventory); }
   if (name === 'certificati') { loadCertificates(); }
       if (name === 'utenti') { loadTenantOptions('new-user-tenant').then(loadUsers); }
-  if (name === 'impostazioni') { loadSmtpSettings(); loadAuditLog(); }
+  if (name === 'impostazioni') { loadSmtpSettings(); }
   if (name === 'archivi') { loadTenantOptions('archivi-tenant').then(loadArchivi); }
 }
 
@@ -527,7 +518,7 @@ async function loadTenants() {
     document.getElementById('tenants-empty').style.display = tenants.length ? 'none' : 'block';
     tenants.forEach(t => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a> | <a href="#" onclick="deleteTenant('${t.name}');return false;" style="color:#dc2626">Elimina</a></td>`;
+      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a></td>`;
       tbody.appendChild(tr);
     });
   } catch (e) { showError(e.message); }
@@ -955,45 +946,6 @@ async function resetUserMfa(id) {
     await api(`/_authgate/dashboard/users/${id}/reset-mfa`, { method: 'POST' });
     loadUsers();
     alert('MFA resettata.');
-  } catch (e) { showError(e.message); }
-}
-
-// --- Log di controllo ---
-async function loadAuditLog() {
-  try {
-    const entries = await api('/_authgate/dashboard/audit-log');
-    const tbody = document.querySelector('#audit-log-table tbody');
-    tbody.innerHTML = '';
-    entries.forEach(e => {
-      const tr = document.createElement('tr');
-      const quando = e.created_at ? new Date(e.created_at).toLocaleString() : '';
-      tr.innerHTML = `<td>${quando}</td><td>${e.username}</td><td>${e.action}</td>
-        <td>${e.details || ''}</td><td>${e.ip || ''}</td>`;
-      tbody.appendChild(tr);
-    });
-    showError('');
-  } catch (e) { showError(e.message); }
-}
-
-// --- Cancellazione cliente ---
-async function deleteTenant(name) {
-  const typed = prompt(
-    `ATTENZIONE: questa azione cancella DEFINITIVAMENTE tutti i dati di "${name}" ` +
-    `(log, archivi, certificati) e non puo' essere annullata.\n\n` +
-    `Scrivi esattamente "${name}" per confermare:`
-  );
-  if (typed !== name) {
-    if (typed !== null) showError('Nome non corrispondente: cancellazione annullata.');
-    return;
-  }
-  try {
-    const result = await api(`/_authgate/dashboard/tenants/${name}/delete`, {
-      method: 'POST', body: JSON.stringify({ confirm_name: name })
-    });
-    showError('');
-    alert(`Cliente eliminato. Archivi rimossi: ${result.archives_removed}, ` +
-          `certificati revocati: ${result.certs_revoked}, utenti disattivati: ${result.users_deactivated}.`);
-    loadTenants();
   } catch (e) { showError(e.message); }
 }
 

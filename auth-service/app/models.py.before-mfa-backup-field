@@ -12,7 +12,6 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     totp_secret = db.Column(db.String(64), nullable=False)
     mfa_confirmed = db.Column(db.Boolean, default=False, nullable=False)
-    mfa_backup_codes = db.Column(db.Text, nullable=True)  # JSON, hash bcrypt di ciascun codice
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     tenant = db.Column(db.String(120), nullable=True)  # None/"*" = accesso globale (admin)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

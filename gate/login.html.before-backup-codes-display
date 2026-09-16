@@ -86,16 +86,6 @@ mfaForm.addEventListener('submit', async (e) => {
   const data = await res.json();
   if (!res.ok) { err.textContent = data.error || 'errore'; return; }
 
-  if (data.backup_codes) {
-    document.querySelector('.card').innerHTML = `
-      <h1>Salva questi codici di recupero</h1>
-      <p class="hint">Usali se perdi l'accesso alla tua app di autenticazione. Ognuno funziona una sola volta. Non verranno mostrati di nuovo.</p>
-      <pre style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:1rem;font-size:1rem;line-height:1.8;text-align:center">${data.backup_codes.join('\n')}</pre>
-      <button onclick="window.location.href='/dashboard.html'">Li ho salvati, continua</button>
-    `;
-    return;
-  }
-
   window.location.href = '/dashboard.html';
 });
 </script>

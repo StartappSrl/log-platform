@@ -95,7 +95,6 @@ def create_tenant_route():
                referente=referente, email=email, note=note)
     db.session.add(t)
     db.session.commit()
-    record_audit("crea_cliente", f"nome={name}")
     return jsonify(name=t.name, display_name=t.display_name, stream_id=t.graylog_stream_id), 201
 
 
@@ -352,7 +351,6 @@ def revoke_certificate_route(serial_number):
     ok = cert_ledger.revoke_certificate(serial_number)
     if not ok:
         return jsonify(error="seriale non trovato o gia' revocato"), 404
-    record_audit("revoca_certificato", f"serial={serial_number}")
     return jsonify(ok=True)
 
 
@@ -634,7 +632,6 @@ def create_user_route():
     )
     db.session.add(u)
     db.session.commit()
-    record_audit("crea_utente", f"username={username}, tenant={tenant or '(admin)'}")
     return jsonify(id=u.id, username=u.username), 201
 
 
@@ -649,8 +646,6 @@ def toggle_user_active_route(user_id):
         return jsonify(error="non puoi disattivare il tuo stesso account"), 400
     u.is_active = not u.is_active
     db.session.commit()
-    record_audit("modifica_stato_utente",
-                  f"username={u.username}, nuovo_stato={'attivo' if u.is_active else 'disattivato'}")
     return jsonify(id=u.id, is_active=u.is_active)
 
 
@@ -667,7 +662,6 @@ def reset_user_mfa_route(user_id):
     u.totp_secret = generate_secret()
     u.mfa_confirmed = False
     db.session.commit()
-    record_audit("reset_mfa", f"username={u.username}")
     return jsonify(ok=True)
 
 
@@ -714,53 +708,3 @@ def list_audit_log_route():
         "username": e.username, "action": e.action, "details": e.details,
         "ip": e.ip, "created_at": e.created_at.isoformat() if e.created_at else None,
     } for e in entries])
-
-@dash.post("/tenants/<name>/delete")
-@admin_required
-@csrf_protect
-def delete_tenant_route(name):
-    """Cancella COMPLETAMENTE un cliente: stream e indice Graylog (con i
-    dati), tutti i suoi archivi caricati, revoca tutti i suoi
-    certificati, disattiva i suoi utenti, e infine cancella il record
-    del tenant. Azione irreversibile - richiede che venga ripetuto il
-    nome esatto del cliente come conferma, per evitare cancellazioni
-    accidentali con un click sbagliato."""
-    data = request.get_json(force=True, silent=True) or {}
-    confirm_name = (data.get("confirm_name") or "").strip()
-
-    t = Tenant.query.filter_by(name=name).first()
-    if not t:
-        return jsonify(error="cliente non trovato"), 404
-    if confirm_name != name:
-        return jsonify(error="conferma non corrispondente: riscrivi esattamente il nome del cliente"), 400
-
-    # 1. Graylog: stream + indice (con i dati)
-    try:
-        if t.graylog_stream_id and t.graylog_index_set_id:
-            gl.delete_stream_and_index(t.graylog_stream_id, t.graylog_index_set_id)
-    except gl.GraylogError as e:
-        return jsonify(error=f"errore Graylog durante la cancellazione: {e} "
-                              "- niente e' stato cancellato, riprova"), 502
-
-    # 2. Archivi caricati
-    archives_removed = archive_storage.delete_all_archives_for_tenant(name)
-
-    # 3. Certificati (revoca, non cancella - restano nel registro per storico)
-    certs_revoked = cert_ledger.revoke_all_certificates_for_tenant(name)
-
-    # 4. Utenti legati a questo tenant: disattivati, non cancellati
-    # (per non perdere la storicita' nel log di controllo)
-    affected_users = User.query.filter_by(tenant=name).all()
-    for u in affected_users:
-        u.is_active = False
-
-    # 5. Il tenant stesso
-    db.session.delete(t)
-    db.session.commit()
-
-    record_audit("cancella_cliente",
-                  f"nome={name}, archivi_rimossi={archives_removed}, "
-                  f"certificati_revocati={certs_revoked}, utenti_disattivati={len(affected_users)}")
-
-    return jsonify(ok=True, archives_removed=archives_removed, certs_revoked=certs_revoked,
-                   users_deactivated=len(affected_users))

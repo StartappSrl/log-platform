@@ -158,3 +158,18 @@ def get_certificates_expiring_soon(days_threshold: int = 30) -> list:
                 "days_remaining": days_remaining,
             })
     return sorted(result, key=lambda x: x["days_remaining"])
+
+def revoke_all_certificates_for_tenant(tenant_common_name_prefix: str) -> int:
+    """Revoca tutti i certificati NON GIA' revocati il cui common_name
+    corrisponde al tenant - i nostri certificati usano il nome del
+    tenant come common_name (es. 'acme', 'acme.pem'), quindi il
+    confronto e' su corrispondenza esatta del nome tenant. Ritorna
+    quanti ne ha revocati."""
+    count = 0
+    for cert in list_issued_certificates():
+        if cert["revoked"]:
+            continue
+        if cert["common_name"] == tenant_common_name_prefix:
+            if revoke_certificate(cert["serial_number"]):
+                count += 1
+    return count
