@@ -334,3 +334,6 @@ def delete_stream_and_index(stream_id: str, index_set_id: str) -> None:
         pass  # se e' gia' in pausa o non esiste piu', non e' un problema bloccante
     _request("DELETE", f"/api/streams/{stream_id}")
     _request("DELETE", f"/api/system/indices/index_sets/{index_set_id}?delete_indices=true")
+
+def delete_notification(notification_id: str) -> None:
+    _request("DELETE", f"/api/events/notifications/{notification_id}")

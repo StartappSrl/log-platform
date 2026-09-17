@@ -250,7 +250,7 @@
       </div>
     </div>
     <table id="notifications-table">
-      <thead><tr><th>Titolo</th><th>Tipo</th><th>Azioni</th></tr></thead>
+      <thead><tr><th>Titolo</th><th>Tipo</th></tr></thead>
       <tbody></tbody>
     </table>
     <div class="empty" id="notifications-empty" style="display:none">Nessuna notifica configurata.</div>
@@ -650,21 +650,11 @@ async function loadNotifications() {
     tbody.innerHTML = '';
     document.getElementById('notifications-empty').style.display = notifications.length ? 'none' : 'block';
     notifications.forEach(n => {
-      const url = (n.config || {}).url || '';
-      const kind = url.includes('/webhook/graylog-notification') ? 'Email' : 'Webhook';
+      const kind = (n.config || {}).type === 'email-notification-v1' ? 'Email' : 'Webhook';
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${n.title}</td><td>${kind}</td>
-        <td><a href="#" onclick="deleteNotification('${n.id}', '${n.title}');return false;" style="color:#dc2626">Elimina</a></td>`;
+      tr.innerHTML = `<td>${n.title}</td><td>${kind}</td>`;
       tbody.appendChild(tr);
     });
-  } catch (e) { showError(e.message); }
-}
-
-async function deleteNotification(id, title) {
-  if (!confirm(`Eliminare la notifica "${title}"? Gli allarmi collegati smetteranno di usarla.`)) return;
-  try {
-    await api(`/_authgate/dashboard/notifications/${id}`, { method: 'DELETE' });
-    loadNotifications();
   } catch (e) { showError(e.message); }
 }
 

@@ -809,3 +809,34 @@ def graylog_notification_webhook():
         return jsonify(error="invio email fallito, vedi i log del container per il motivo"), 502
 
     return jsonify(ok=True), 200
+
+@dash.delete("/notifications/<notification_id>")
+@admin_required
+@csrf_protect
+def delete_notification_route(notification_id):
+    try:
+        gl.delete_notification(notification_id)
+    except gl.GraylogError as e:
+        return jsonify(error=f"errore Graylog: {e}"), 502
+    record_audit("elimina_notifica", f"id={notification_id}")
+    return jsonify(ok=True)
+
+
+@dash.delete("/users/<int:user_id>")
+@admin_required
+@csrf_protect
+def delete_user_route(user_id):
+    """Cancellazione DEFINITIVA (a differenza di toggle-active, che
+    disattiva soltanto) - va usata quando un utente non serve piu' del
+    tutto, non solo temporaneamente sospeso."""
+    u = User.query.get(user_id)
+    if not u:
+        return jsonify(error="utente non trovato"), 404
+    if u.id == g.current_user.id:
+        return jsonify(error="non puoi eliminare il tuo stesso account"), 400
+
+    username = u.username
+    db.session.delete(u)
+    db.session.commit()
+    record_audit("elimina_utente", f"username={username}")
+    return jsonify(ok=True)
