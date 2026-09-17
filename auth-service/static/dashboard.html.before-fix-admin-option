@@ -482,7 +482,7 @@ function showPanel(name) {
   if (name === 'notifiche') { loadTenantOptions('notifica-tenant'); loadNotifications(); }
   if (name === 'inventario') { loadTenantOptions('inventario-tenant').then(loadInventory); }
   if (name === 'certificati') { loadCertificates(); }
-      if (name === 'utenti') { loadTenantOptionsPreservingAdmin('new-user-tenant').then(loadUsers); }
+      if (name === 'utenti') { loadTenantOptions('new-user-tenant').then(loadUsers); }
   if (name === 'impostazioni') { loadSmtpSettings(); loadAuditLog(); }
   if (name === 'archivi') { loadTenantOptions('archivi-tenant').then(loadArchivi); }
 }
@@ -922,23 +922,6 @@ async function sendReportNow() {
 }
 
 // --- Utenti ---
-async function loadTenantOptionsPreservingAdmin(selectId) {
-  // A differenza di loadTenantOptions() (usata per altri menu, dove
-  // TUTTE le opzioni devono essere tenant reali), qui la prima opzione
-  // "— Amministratore —" va preservata - aggiungiamo i tenant DOPO,
-  // senza svuotare il menu.
-  try {
-    const tenants = await api('/_authgate/dashboard/tenants');
-    const select = document.getElementById(selectId);
-    const adminOption = select.querySelector('option[value=""]');
-    const adminHtml = adminOption ? adminOption.outerHTML : '<option value="">— Amministratore —</option>';
-    select.innerHTML = adminHtml + tenants.map(t =>
-      `<option value="${t.name}">${t.display_name || t.name}</option>`
-    ).join('');
-  } catch (e) { showError(e.message); }
-}
-
-
 async function changeOwnPassword() {
   const current_password = document.getElementById('cp-current').value;
   const new_password = document.getElementById('cp-new').value;
