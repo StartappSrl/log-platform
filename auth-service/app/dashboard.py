@@ -764,3 +764,48 @@ def delete_tenant_route(name):
 
     return jsonify(ok=True, archives_removed=archives_removed, certs_revoked=certs_revoked,
                    users_deactivated=len(affected_users))
+
+import json as _json
+
+
+@dash.post("/webhook/graylog-notification")
+def graylog_notification_webhook():
+    """Riceve la chiamata HTTP che Graylog fa quando scatta un allarme
+    con notifica di tipo 'email' (create_notification in
+    graylog_client.py la configura come notifica HTTP verso QUESTO
+    endpoint, invece di usare il transport email nativo di Graylog, che
+    richiederebbe una configurazione server separata in graylog.conf).
+
+    Protetto da un segreto condiviso nell'URL stessa (non dalla sessione
+    utente normale, dato che chi chiama e' Graylog stesso, non un
+    browser) - senza sessione/CSRF perche' e' una chiamata server-to-server."""
+    expected_secret = os.environ.get("GRAYLOG_WEBHOOK_SECRET", "")
+    provided_secret = request.args.get("secret", "")
+    if not expected_secret or provided_secret != expected_secret:
+        return jsonify(error="non autorizzato"), 403
+
+    to_email = request.args.get("to", "").strip()
+    if not to_email:
+        return jsonify(error="destinatario mancante nell'URL della notifica"), 400
+
+    payload = request.get_json(force=True, silent=True) or {}
+    event_title = payload.get("event_definition_title", "Allarme Log Platform")
+    event = payload.get("event", {}) or {}
+    event_message = event.get("message", "(nessun dettaglio disponibile)")
+
+    from . import send_alert_email
+    body = (
+        f"Allarme: {event_title}\n\n"
+        f"{event_message}\n\n"
+        f"--- Dettaglio completo ---\n{_json.dumps(payload, indent=2, ensure_ascii=False)}"
+    )
+    ok = send_alert_email.send_alert(f"[Log Platform] {event_title}", body, recipients=[to_email])
+
+    if not ok:
+        # Ritorna un errore vero: Graylog segnala la notifica come
+        # fallita nella sua interfaccia (visibilita' utile se l'SMTP e'
+        # mal configurato), e puo' ritentare in caso di problema
+        # transitorio.
+        return jsonify(error="invio email fallito, vedi i log del container per il motivo"), 502
+
+    return jsonify(ok=True), 200

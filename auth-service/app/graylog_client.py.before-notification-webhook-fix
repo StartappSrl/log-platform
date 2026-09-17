@@ -107,26 +107,16 @@ def list_event_definitions(stream_id: str | None = None) -> list:
 
 
 def create_notification(title: str, kind: str, target: str) -> dict:
-    """kind: 'email' o 'webhook'. target: indirizzo email o URL webhook.
-
-    'email' NON usa il transport nativo di Graylog (richiederebbe una
-    configurazione server separata in graylog.conf, non fatta qui) -
-    usa invece una notifica HTTP verso un nostro webhook, che manda
-    l'email con il sistema SMTP gia' configurato in Impostazioni."""
+    """kind: 'email' o 'webhook'. target: indirizzo email o URL webhook."""
     if kind == "email":
-        base_url = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
-        webhook_secret = os.environ.get("GRAYLOG_WEBHOOK_SECRET", "")
-        if not base_url or not webhook_secret:
-            raise GraylogError(
-                "PUBLIC_BASE_URL o GRAYLOG_WEBHOOK_SECRET non configurate lato server - "
-                "servono per instradare le notifiche email attraverso il nostro webhook."
-            )
-        webhook_url = f"{base_url}/_authgate/dashboard/webhook/graylog-notification?to={target}&secret={webhook_secret}"
         config = {
-            "type": "http-notification-v1",
-            "url": webhook_url,
-            "headers": "", "api_key": "", "api_secret": "", "basic_auth": "",
-            "skip_tls_verification": False,
+            "type": "email-notification-v1",
+            "sender": os.environ.get("GRAYLOG_ALERT_EMAIL_FROM", "alerts@logplatform.local"),
+            "subject": "[Log Platform] Allarme: ${event_definition_title}",
+            "body_template": "Allarme: ${event_definition_title}\\n${event.message}",
+            "user_recipients": [],
+            "email_recipients": [target],
+            "time_zone": "Europe/Rome",
         }
     elif kind == "webhook":
         config = {
