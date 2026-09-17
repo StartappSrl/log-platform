@@ -125,13 +125,14 @@ def create_notification(title: str, kind: str, target: str) -> dict:
         config = {
             "type": "http-notification-v1",
             "url": webhook_url,
-            "api_key": "", "api_secret": "", "basic_auth": "",
+            "headers": "", "api_key": "", "api_secret": "", "basic_auth": "",
             "skip_tls_verification": False,
         }
     elif kind == "webhook":
         config = {
             "type": "http-notification-v1",
             "url": target,
+            "headers": "",
             "api_key": "", "api_secret": "", "basic_auth": "",
             "skip_tls_verification": False,
         }
