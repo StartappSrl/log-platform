@@ -151,7 +151,7 @@
       </div>
     </div>
     <table id="tenants-table">
-      <thead><tr><th>Identificativo</th><th>Nome</th><th>Ragione sociale</th><th>P.IVA/CF</th><th>Referente</th><th>Email</th><th>Stream Graylog</th><th>Spazio</th><th>Agent</th></tr></thead>
+      <thead><tr><th>Identificativo</th><th>Nome</th><th>Ragione sociale</th><th>P.IVA/CF</th><th>Referente</th><th>Email</th><th>Stream Graylog</th><th>Agent</th></tr></thead>
       <tbody></tbody>
     </table>
     <div class="empty" id="tenants-empty" style="display:none">Nessun cliente ancora. Creane uno sopra.</div>
@@ -531,22 +531,10 @@ async function loadTenants() {
     document.getElementById('tenants-empty').style.display = tenants.length ? 'none' : 'block';
     tenants.forEach(t => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td id="storage-${t.name}">...</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a> | <a href="#" onclick="deleteTenant('${t.name}');return false;" style="color:#dc2626">Elimina</a></td>`;
+      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a> | <a href="#" onclick="deleteTenant('${t.name}');return false;" style="color:#dc2626">Elimina</a></td>`;
       tbody.appendChild(tr);
-      loadTenantStorageSize(t.name);
     });
   } catch (e) { showError(e.message); }
-}
-
-async function loadTenantStorageSize(name) {
-  const cell = document.getElementById(`storage-${name}`);
-  if (!cell) return;
-  try {
-    const result = await api(`/_authgate/dashboard/tenants/${name}/storage-size`);
-    cell.textContent = result.human || 'n/d';
-  } catch (e) {
-    cell.textContent = 'n/d';
-  }
 }
 
 async function createTenant() {

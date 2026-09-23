@@ -840,3 +840,16 @@ def delete_user_route(user_id):
     db.session.commit()
     record_audit("elimina_utente", f"username={username}")
     return jsonify(ok=True)
+
+@dash.get("/tenants/<name>/storage-size")
+@admin_required
+def tenant_storage_size_route(name):
+    t = Tenant.query.filter_by(name=name).first()
+    if not t:
+        return jsonify(error="cliente non trovato"), 404
+
+    size_bytes = gl.get_index_set_storage_bytes(t.graylog_index_set_id)
+    return jsonify({
+        "bytes": size_bytes,
+        "human": gl.format_bytes_human(size_bytes) if size_bytes is not None else None,
+    })

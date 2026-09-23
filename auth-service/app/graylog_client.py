@@ -360,3 +360,49 @@ def delete_stream_and_index(stream_id: str, index_set_id: str) -> None:
 
 def delete_notification(notification_id: str) -> None:
     _request("DELETE", f"/api/events/notifications/{notification_id}")
+
+def get_index_set_storage_bytes(index_set_id: str) -> int | None:
+    """Spazio occupato in OpenSearch dall'indice di un tenant, in byte -
+    dato preciso (non una stima), a differenza di una ripartizione per
+    singolo dispositivo che invece si potrebbe solo stimare.
+
+    ATTENZIONE - non verificato dal vivo: non ho un Graylog reale a
+    disposizione per confermare la forma esatta della risposta di
+    questo endpoint. Prova diversi nomi di campo plausibili (varianti
+    viste in versioni diverse di Graylog) prima di arrendersi, ma va
+    controllato/corretto contro la tua installazione reale - stesso
+    tipo di correzione gia' fatta insieme per le notifiche."""
+    try:
+        result = _request("GET", f"/api/system/indices/index_sets/{index_set_id}/stats")
+    except GraylogError:
+        return None
+
+    for field_name in ("size", "store_size", "size_in_bytes", "total_size"):
+        if field_name in result and isinstance(result[field_name], (int, float)):
+            return int(result[field_name])
+
+    # Alcune versioni annidano il dato sotto 'indices' come somma da fare
+    indices = result.get("indices")
+    if isinstance(indices, dict):
+        total = 0
+        found_any = False
+        for idx_stats in indices.values():
+            for field_name in ("size", "store_size", "size_in_bytes"):
+                if isinstance(idx_stats, dict) and field_name in idx_stats:
+                    total += idx_stats[field_name]
+                    found_any = True
+                    break
+        if found_any:
+            return total
+
+    return None
+
+
+def format_bytes_human(num_bytes: int) -> str:
+    """Formatta byte in una stringa leggibile (KB/MB/GB/TB)."""
+    value = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024:
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} {unit}"
+        value /= 1024
+    return f"{value:.1f} TB"
