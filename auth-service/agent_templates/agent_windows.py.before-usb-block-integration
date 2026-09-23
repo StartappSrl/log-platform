@@ -241,24 +241,6 @@ def inventory_loop(tenant: str, hostname: str, connect_args: tuple, sock_holder:
             time.sleep(1)
 
 
-def usb_block_loop(stop_flag: dict):
-    """Applica il blocco dello storage USB subito, poi lo riafferma ogni
-    ora (in caso un amministratore locale lo rimuova a mano) - stesso
-    schema di inventory_loop per il controllo di stop_flag e l'attesa."""
-    import usb_block
-    while not stop_flag["stop"]:
-        try:
-            msg = usb_block.enforce_usb_block_if_configured(True)
-            print(f"[USB storage] {msg}")
-        except Exception:
-            pass
-
-        for _ in range(3600):
-            if stop_flag["stop"]:
-                return
-            time.sleep(1)
-
-
 def load_config(config_path: Path):
     cfg = configparser.ConfigParser()
     cfg.read(config_path)
@@ -284,7 +266,6 @@ def load_config(config_path: Path):
         "local_archive_upload_url": s.get("local_archive_upload_url", "").strip() or None,
         "local_archive_upload_token": s.get("local_archive_upload_token", "").strip() or None,
         "inventory_interval_hours": s.getfloat("inventory_interval_hours", 24),
-        "block_usb_storage": s.getboolean("block_usb_storage", fallback=False),
     }
 
 
@@ -349,12 +330,6 @@ def run_agent(stop_flag: dict):
             target=inventory_loop,
             args=(config["tenant"], config["hostname"], connect_args, sock_holder,
                   config["inventory_interval_hours"], stop_flag),
-            daemon=True))
-
-    if config["block_usb_storage"]:
-        threads.append(threading.Thread(
-            target=usb_block_loop,
-            args=(stop_flag,),
             daemon=True))
 
     for t in threads:

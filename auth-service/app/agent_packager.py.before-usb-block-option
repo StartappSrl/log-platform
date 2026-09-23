@@ -75,11 +75,6 @@ client_key = {tenant}-key.pem
 event_logs = Application, System
 # admin_event_logs = Security
 
-# Blocca lo storage USB (chiavette, dischi esterni) su questo PC -
-# NON blocca tastiere/mouse/stampanti (usano un driver diverso).
-# ATTENZIONE: provalo su una macchina di test prima di un cliente vero.
-# block_usb_storage = true
-
 local_archive_dir = C:\\ProgramData\\LogPlatformAgent\\archive
 # local_archive_tsa_url =
 local_archive_upload_url = https://{PUBLIC_DOMAIN}/_authgate/archive-upload

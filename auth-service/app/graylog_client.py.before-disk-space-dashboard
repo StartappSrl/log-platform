@@ -318,29 +318,6 @@ def get_device_dashboard_for_tenant(stream_id: str, range_minutes: int = 1440) -
         h["online"] = online
         device_list.append(h)
 
-    # Spazio disco: preso dall'inventario piu' recente (raccolto
-    # separatamente dai log), non dai messaggi di log stessi - un
-    # fallimento qui non deve far fallire tutta la dashboard.
-    try:
-        inventory_by_host = {inv["hostname"]: inv for inv in get_latest_inventory_per_host(stream_id)}
-    except Exception:
-        inventory_by_host = {}
-
-    for d in device_list:
-        d["disk_percent"] = None
-        inv = inventory_by_host.get(d["hostname"])
-        if inv and inv.get("disks"):
-            percentages = []
-            for disk in inv["disks"]:
-                total = disk.get("total_gb") or 0
-                used = disk.get("used_gb") or 0
-                if total > 0:
-                    percentages.append(round(used / total * 100))
-            if percentages:
-                # Il disco PIU' pieno, non la media - un secondo disco
-                # quasi esaurito e' un problema tanto quanto il primo.
-                d["disk_percent"] = max(percentages)
-
     return {
         "devices": sorted(device_list, key=lambda x: x["hostname"]),
         "total_messages_today": total_today,

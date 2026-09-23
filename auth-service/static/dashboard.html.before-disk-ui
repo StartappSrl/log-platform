@@ -868,11 +868,6 @@ async function loadDeviceDashboard() {
         row.className = 'device-row';
         const statusClass = d.online ? 'online' : 'offline';
         const lastSeen = d.last_seen ? new Date(d.last_seen).toLocaleString() : '-';
-        let diskHtml = '';
-        if (d.disk_percent !== null && d.disk_percent !== undefined) {
-          const diskColor = d.disk_percent >= 90 ? '#dc2626' : (d.disk_percent >= 75 ? '#d97706' : '#64748b');
-          diskHtml = `<span class="device-disk" style="color:${diskColor}" title="Spazio disco usato (disco piu' pieno)">${d.disk_percent}% disco</span>`;
-        }
         row.innerHTML = `
           <div class="device-status ${statusClass}" title="${d.online ? 'Online' : 'Offline'}"></div>
           <div class="device-name">${d.hostname}</div>
@@ -880,7 +875,6 @@ async function loadDeviceDashboard() {
           <span class="device-badge errors" style="cursor:pointer" title="Vedi gli errori">${d.errors}</span>
           <span class="device-badge warnings" style="cursor:pointer" title="Vedi gli avvisi">${d.warnings}</span>
           <span class="device-badge ok" style="cursor:pointer" title="Vedi i log normali">${d.ok}</span>
-          ${diskHtml}
           <div class="device-lastseen">${lastSeen}</div>
         `;
         const badges = row.querySelectorAll('.device-badge');
