@@ -39,7 +39,7 @@ def run_sc(*args) -> subprocess.CompletedProcess:
 
 def check_service_exists() -> bool:
     result = run_sc("query", SERVICE_NAME)
-    return detect_existing_installation(result.stdout)
+    return detect_existing_installation(result.returncode)
 
 
 def install_service(exe_path: str) -> tuple:

@@ -30,11 +30,20 @@ def set_usb_block_in_ini(ini_path: str, enabled: bool) -> None:
         f.writelines(new_lines)
 
 
-def detect_existing_installation(sc_query_output: str) -> bool:
-    """Interpreta l'output di 'sc query <nome servizio>' - separata dalla
-    chiamata vera a sc.exe per poter testare la logica di
-    interpretazione con un output finto."""
-    return "SERVICE_NAME" in sc_query_output or "STATE" in sc_query_output
+def detect_existing_installation(returncode: int) -> bool:
+    """Interpreta il CODICE DI USCITA di 'sc query <nome servizio>' -
+    0 significa che il servizio esiste, qualunque altro valore (tipico:
+    1060, 'il servizio non esiste') significa che non c'e'.
+
+    NON usiamo piu' il testo della risposta (cercare 'SERVICE_NAME' o
+    'STATE') perche' su Windows in lingue diverse dall'inglese quel
+    testo viene tradotto (es. in italiano) - il codice di uscita invece
+    resta identico in qualunque lingua. Bug vero, trovato dal vivo su
+    un PC con Windows in italiano: il controllo falliva sempre,
+    facendo credere che il servizio non esistesse anche quando c'era
+    gia', causando poi l'errore 1073 (servizio gia' esistente) al
+    tentativo di crearlo di nuovo."""
+    return returncode == 0
 
 
 def build_sc_create_args(service_name: str, exe_path: str) -> list:
