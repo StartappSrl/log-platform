@@ -71,7 +71,7 @@ def create_tenant_route():
     data = request.get_json(force=True, silent=True) or {}
     name = (data.get("name") or "").strip().lower()
     display_name = data.get("display_name") or name
-    retention_days = int(data.get("retention_days") or 180)
+    retention_days = int(data.get("retention_days") or 90)
     ragione_sociale = (data.get("ragione_sociale") or "").strip() or None
     partita_iva = (data.get("partita_iva") or "").strip() or None
     indirizzo = (data.get("indirizzo") or "").strip() or None

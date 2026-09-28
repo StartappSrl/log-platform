@@ -113,7 +113,7 @@
         </div>
         <div>
           <label>Conservazione (giorni)</label>
-          <input id="new-tenant-retention" type="number" value="180" style="width:90px">
+          <input id="new-tenant-retention" type="number" value="90" style="width:90px">
         </div>
       </div>
       <div class="row">
@@ -552,7 +552,7 @@ async function loadTenantStorageSize(name) {
 async function createTenant() {
   const name = document.getElementById('new-tenant-name').value.trim();
   const display_name = document.getElementById('new-tenant-display').value.trim();
-  const retention_days = parseInt(document.getElementById('new-tenant-retention').value || '180', 10);
+  const retention_days = parseInt(document.getElementById('new-tenant-retention').value || '90', 10);
   const ragione_sociale = document.getElementById('new-tenant-ragione-sociale').value.trim();
   const partita_iva = document.getElementById('new-tenant-piva').value.trim();
   const referente = document.getElementById('new-tenant-referente').value.trim();

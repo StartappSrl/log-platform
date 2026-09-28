@@ -36,7 +36,7 @@ def _request(method: str, path: str, **kwargs) -> dict:
     return {}
 
 
-def create_tenant_stream(tenant: str, retention_days: int = 180) -> dict:
+def create_tenant_stream(tenant: str, retention_days: int = 90) -> dict:
     """Crea index set + stream + regola di instradamento per un nuovo tenant.
     Equivalente a scripts/provision-tenant.sh, richiamabile via API."""
     index_set = _request("POST", "/api/system/indices/index_sets", json={
