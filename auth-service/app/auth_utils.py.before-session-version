@@ -24,12 +24,4 @@ def get_current_user():
     except (BadSignature, SignatureExpired):
         return None
 
-    user = User.query.filter_by(username=data.get("u"), is_active=True).first()
-    if user is None:
-        return None
-    if data.get("v") != user.session_version:
-        # Il cookie e' firmato correttamente ma si riferisce a una
-        # versione di sessione superata (password cambiata o MFA
-        # resettata da allora) - lo trattiamo come scaduto.
-        return None
-    return user
+    return User.query.filter_by(username=data.get("u"), is_active=True).first()

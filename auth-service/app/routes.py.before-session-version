@@ -14,8 +14,8 @@ MAX_FAILED_ATTEMPTS = 5
 FAILED_WINDOW_MINUTES = 15
 
 
-def _set_session_cookie(resp, user):
-    token = get_serializer().dumps({"u": user.username, "v": user.session_version})
+def _set_session_cookie(resp, username: str):
+    token = get_serializer().dumps({"u": username})
     max_age = int(current_app.config["SESSION_LIFETIME_MINUTES"]) * 60
     resp.set_cookie(
         current_app.config["SESSION_COOKIE_NAME"],
@@ -102,7 +102,7 @@ def verify_mfa():
     if backup_codes_generated:
         resp_data["backup_codes"] = backup_codes_generated
     resp = make_response(jsonify(resp_data))
-    _set_session_cookie(resp, user)
+    _set_session_cookie(resp, user.username)
     return resp
 
 

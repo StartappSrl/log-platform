@@ -666,7 +666,6 @@ def reset_user_mfa_route(user_id):
         return jsonify(error="utente non trovato"), 404
     u.totp_secret = generate_secret()
     u.mfa_confirmed = False
-    u.session_version += 1
     db.session.commit()
     record_audit("reset_mfa", f"username={u.username}")
     return jsonify(ok=True)
@@ -686,7 +685,6 @@ def change_own_password_route():
         return jsonify(error="la nuova password deve avere almeno 8 caratteri"), 400
 
     g.current_user.password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-    g.current_user.session_version += 1
     db.session.commit()
     return jsonify(ok=True)
 # --- Da aggiungere a app/dashboard.py (in fondo al file) ---
