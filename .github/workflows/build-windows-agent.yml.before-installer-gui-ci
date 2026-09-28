@@ -59,28 +59,11 @@ jobs:
             @addBinaryArgs `
             agent_windows.py
 
-      - name: Build installer grafico
-        working-directory: agent
-        shell: pwsh
-        run: |
-          pyinstaller --onefile --windowed --uac-admin --name installer_gui installer_gui.py
-          if (!(Test-Path "dist\installer_gui.exe")) {
-            Write-Error "Build installer grafico fallita: dist\installer_gui.exe non trovato"
-            exit 1
-          }
-          # Lo metto DENTRO la stessa cartella che verra' compressa, cosi'
-          # finisce nello zip di release senza toccare agent_packager.py
-          Copy-Item "dist\installer_gui.exe" "dist\logplatform-agent\installer_gui.exe"
-
       - name: Verifica e comprimi la cartella risultante
         working-directory: agent
         run: |
           if (!(Test-Path "dist\logplatform-agent\logplatform-agent.exe")) {
             Write-Error "Build fallita: dist\logplatform-agent\logplatform-agent.exe non trovato"
-            exit 1
-          }
-          if (!(Test-Path "dist\logplatform-agent\installer_gui.exe")) {
-            Write-Error "Build fallita: dist\logplatform-agent\installer_gui.exe non trovato"
             exit 1
           }
           Write-Host "Cartella creata, contenuto:"
