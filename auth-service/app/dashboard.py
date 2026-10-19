@@ -167,6 +167,7 @@ def create_alarm_route():
         result = gl.create_alert(title, t.graylog_stream_id, query, threshold, window_minutes, notification_ids)
     except gl.GraylogError as e:
         return jsonify(error=f"errore Graylog: {e}"), 502
+    record_audit("crea_allarme", f"cliente={tenant_name}, titolo={title}")
     return jsonify(result), 201
 
 
@@ -210,6 +211,8 @@ def create_notification_route():
         result = gl.create_notification(title, kind, target)
     except gl.GraylogError as e:
         return jsonify(error=f"errore Graylog: {e}"), 502
+    # La destinazione (email/URL webhook) NON si registra: un URL puo' contenere token
+    record_audit("crea_notifica", f"titolo={title}, tipo={kind}")
     return jsonify(result), 201
 # --- Da aggiungere a app/dashboard.py (in fondo al file) ---
 
@@ -540,6 +543,9 @@ def save_smtp_settings_route():
         s.smtp_password = new_password
 
     db.session.commit()
+    # La password non si registra mai, solo se e' stata cambiata
+    record_audit("modifica_impostazioni_smtp",
+                  f"host={s.smtp_host}, password_modificata={'si' if new_password else 'no'}")
     return jsonify(ok=True)
 
 
@@ -688,6 +694,7 @@ def change_own_password_route():
     g.current_user.password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
     g.current_user.session_version += 1
     db.session.commit()
+    record_audit("cambio_password", f"username={g.current_user.username}")
     return jsonify(ok=True)
 # --- Da aggiungere a app/dashboard.py (in fondo al file) ---
 

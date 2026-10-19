@@ -1,114 +1,146 @@
 # Log Platform — Documentazione d'insieme
 
-Questo documento serve per orientarsi nell'architettura senza dover
-rileggere l'intera cronologia di sviluppo. Aggiornalo quando cambi
-qualcosa di strutturale — un documento vecchio è peggio di nessun
-documento, perché dà falsa sicurezza.
+Aggiornata allo stato di fine sviluppo (sostituisce la versione precedente).
+Aggiornala quando cambi qualcosa di strutturale: un documento vecchio è
+peggio di nessun documento, perché dà falsa sicurezza.
 
 ## Cos'è
 
 Piattaforma multi-cliente (multi-tenant) di raccolta e consultazione log,
 basata su Graylog, con un pannello web semplificato al posto
-dell'interfaccia nativa di Graylog. Pensata per un system integrator che
-gestisce i log di più clienti su un'unica installazione condivisa,
-mantenendo i dati di ciascuno isolati dagli altri.
+dell'interfaccia nativa. Pensata per un system integrator che gestisce i log
+di più clienti su un'unica installazione, con i dati di ciascuno isolati.
 
-## I moduli (NS8, ognuno un container separato)
+## I moduli (NS8, ognuno un container podman rootless, utente di servizio proprio)
 
-| Modulo | Cosa fa | Dati che possiede |
+| Modulo | Cosa fa | Dati |
 |---|---|---|
-| `mariadb` | Database relazionale | Utenti, tenant, impostazioni SMTP, log di controllo, stato archivi/alert |
-| `mongodb` | Configurazione interna di Graylog | Stream, index set, allarmi, notifiche, dashboard |
-| `opensearch` | Motore di ricerca | Gli indici dei log veri e propri (il grosso dei dati, non nel backup per motivi di spazio) |
-| `graylog` | Riceve i log (GELF, syslog), li instrada per tenant | Nessuno stato proprio oltre a MongoDB/OpenSearch |
-| `auth` | Il "cervello" applicativo: pannello, login, MFA, API | Codice (`auth-service/`), volumi: CA (`logplatform-auth-ca`), archivi caricati dagli agent (`logplatform-auth-archives`) |
-| `gate` | Reverse proxy + pagina di login | `login.html`, instrada le richieste verso `auth` dopo autenticazione |
+| `mariadb` | Database relazionale | Utenti, tenant, impostazioni SMTP, audit log, stato avvisi |
+| `mongodb` | Configurazione interna di Graylog | Stream, index set, allarmi, notifiche |
+| `opensearch` | Motore di ricerca | Gli indici dei log (NON nel backup, per spazio) |
+| `graylog` | Riceve i log e li instrada per tenant | Nessuno stato proprio |
+| `auth` | Pannello, login, MFA, API | Codice in `auth-service/`; volumi: CA (`logplatform-auth-ca`), archivi (`logplatform-auth-archives`) |
+| `gate` | Reverse proxy + pagina di login | `login.html` |
 
-## Come i log arrivano e restano isolati per tenant
+**Importante**: i container sono rootless, quindi `podman ps` da root NON li
+mostra. Si opera sempre come `sudo -u <istanza> XDG_RUNTIME_DIR=/run/user/$(id -u <istanza>) podman ...`
+e **da una cartella accessibile a quell'utente** (`cd /tmp` prima), altrimenti
+errore "cannot chdir".
 
-1. **Agent** (Python, gira sul PC/server del cliente): legge file di log
-   o Windows Event Log, li impacchetta in formato GELF, li manda a
-   Graylog via TCP+TLS con **certificato client** firmato dalla CA
-   interna (mutua autenticazione - solo chi ha il certificato giusto
-   può mandare dati).
-2. Ogni messaggio GELF include un campo `_tenant` con il nome del
-   cliente (l'agent lo sa dalla sua configurazione, `agent.ini`).
-3. Su Graylog, ogni tenant ha il suo **stream** con una regola che
-   filtra `tenant = <nome>` - solo i messaggi con quel campo finiscono
-   in quello stream, quindi in quell'index set (dati fisicamente
-   separati in OpenSearch).
-4. **Relay syslog** (opzionale, per dispositivi che parlano solo
-   syslog): l'agent stesso apre una porta locale, riceve syslog dalla
-   rete del cliente, e lo inoltra come GELF con lo stesso meccanismo -
-   il dispositivo non tocca mai Internet direttamente.
+## Come arrivano i log e come restano isolati
 
-**Limite noto**: la CA interna, se compromessa, invaliderebbe la fiducia
-in tutti i certificati - non c'è ancora un vero enforcement della revoca
-(vedi `NGINX-CRL-PROXY.md` per il disegno di una soluzione, non applicata).
+1. **Agent** (Python, sul PC/server del cliente) legge file di log o Windows
+   Event Log e invia a Graylog in GELF su TCP+TLS con **certificato client**
+   (mTLS) firmato dalla CA interna.
+2. Ogni messaggio porta `_tenant`; su Graylog ogni tenant ha uno **stream** con
+   regola `tenant = <nome>` e un **index set** separato in OpenSearch.
+3. **Relay syslog**: l'agent può ascoltare syslog (UDP/TCP) sulla rete locale e
+   inoltrare come GELF, con l'hostname reale del dispositivo e la gravità dal
+   campo PRI. Il dispositivo non tocca mai Internet.
+4. Gravità nei log Linux generici: euristica su parole chiave (error/warning/...)
+   in `agent.py`; i log Windows hanno un livello vero.
+
+**Trappole note di Graylog**: la ricerca deve usare `filter=streams:<ID>` (il
+parametro `streams=` è ignorato in silenzio e causa fuga di dati tra tenant —
+c'è un test di non-regressione); il campo host nei risultati è `source`, non `host`.
+
+## Windows: installazione e blocco USB
+
+- Il pacchetto scaricabile contiene `logplatform-agent.exe`, `installer_gui.exe`,
+  `agent.ini`, certificati. **`installer_gui.exe`** (Tkinter, richiede UAC
+  automaticamente): rileva un'installazione precedente, la ferma e rimuove, crea
+  il servizio con avvio **automatico**, configura il **riavvio automatico in caso
+  di arresto** (`sc failure`), lo avvia. Casella opzionale "blocca storage USB".
+- Il rilevamento del servizio usa il **codice di uscita** di `sc.exe`, non il
+  testo: su Windows in italiano il testo è tradotto (bug reale già visto, errore 1073).
+- **Blocco USB** (`usb_block.py`): imposta `Start=4` sul driver `USBSTOR` nel
+  registro, riaffermato ogni ora. Blocca solo lo storage; un dispositivo già
+  inserito resta attivo finché non viene riconnesso; un admin locale può
+  rimuoverlo. **Mai verificato su un Windows reale.**
+- Diagnostica: se il servizio parte da SCM, `stdout/stderr` sono rediretti su
+  `agent-stdout.log` / `agent-stderr.log` nella cartella dell'agent.
+- **Problema aperto**: in passato il servizio su un PC si è fermato dopo qualche
+  ora con errore generico (`%%536870913`), causa mai identificata. Il riavvio
+  automatico ne riduce l'impatto, non è la cura. Se si ripresenta: leggere
+  `agent-stderr.log` e il Visualizzatore eventi (Sistema + Applicazione).
+
+## Notifiche degli allarmi
+
+Le notifiche "email" **non** usano il transport email nativo di Graylog (non
+configurato in `graylog.conf`): sono notifiche HTTP verso il nostro webhook
+`/_authgate/dashboard/webhook/graylog-notification`, protetto da
+`GRAYLOG_WEBHOOK_SECRET`, che invia con l'SMTP configurato in Impostazioni.
+Serve `PUBLIC_BASE_URL` + `GRAYLOG_WEBHOOK_SECRET` nell'unit systemd di `auth`.
+Il campo `headers` NON è valido nella config HTTP di Graylog (rifiutato con 400).
 
 ## Struttura del repository (`final-package/`)
 
 ```
-auth-service/
-  app/            - il codice Flask (dashboard.py ha quasi tutte le rotte)
-  static/         - dashboard.html, login.html (il frontend, tutto in questi due file)
-  agent_templates/ - copia dei file agent, usata per generare i pacchetti scaricabili
-agent/            - il codice sorgente dell'agent (agent.py, agent_windows.py, ecc.)
-gate/             - login.html, nginx.conf.template
-scripts/          - backup.sh, seal-admin-logs.sh, check_disk_space.sh, script di provisioning
-ns8-modules/ (repo separati) - un repo per modulo NS8 (mariadb, mongodb, graylog, auth, gate)
+auth-service/app/   dashboard.py (quasi tutte le rotte), models.py, graylog_client.py,
+                    routes.py (login/MFA), auth_utils.py (sessioni), mfa.py, cert_ledger.py,
+                    archive_storage.py, agent_packager.py, nightly_report.py, email_sender.py,
+                    send_alert_email.py, send_nightly_report.py, check_offline_devices.py,
+                    platform_health.py, inventory_pdf.py
+auth-service/static/ dashboard.html, login (frontend tutto in questi file)
+auth-service/agent_templates/  copia dei file agent usata per generare i pacchetti
+agent/              agent.py, agent_windows.py, inventory.py, local_archive.py, gelf_transport.py,
+                    syslog_relay.py, syslog_parser.py, usb_block.py, installer_gui.py, installer_logic.py
+gate/               login.html, nginx.conf.template
+scripts/            backup.sh, restore.sh, verifica_backup.sh, check_disk_space.sh, seal-admin-logs.sh
+tests/              test di non-regressione (pytest, girano in CI)
+.github/workflows/  build-images.yml, build-windows-agent.yml, tests.yml
 ```
+`models.py` e `dashboard.py` sono cresciuti per accumulo (funzioni accodate in
+fondo): cercare con `grep` per nome di funzione, non scorrere il file.
 
-**Nota importante**: `auth-service/app/models.py` e `dashboard.py` sono
-diventati grandi nel tempo, costruiti per accumulo (nuove funzioni
-accodate in fondo) - non sono organizzati per argomento. Cercare con
-`grep` per nome di funzione è più affidabile che scorrere il file.
+## Tabelle principali (MariaDB)
 
-## Tabelle principali in MariaDB
+`tenants` (anagrafica) · `users` (MFA, `mfa_backup_codes`, `session_version`) ·
+`smtp_settings` (una riga, id=1) · `audit_log` · `offline_alert_state` · `failed_logins`.
+Dopo ogni nuova colonna/tabella serve una migrazione SQL manuale (non c'è un tool di migrazioni).
 
-- `tenants` - un cliente per riga, con anagrafica (ragione sociale, P.IVA, ecc.)
-- `users` - utenti del pannello (admin o legati a un tenant), con MFA e codici di recupero
-- `smtp_settings` - configurazione email per il report notturno (una riga sola, id=1)
-- `audit_log` - azioni amministrative sensibili (chi ha fatto cosa)
-- `offline_alert_state` - traccia quali host sono già stati segnalati offline (evita spam)
-- `failed_logins` - tentativi di login/MFA falliti (per il blocco anti brute-force)
+## Sicurezza (stato reale)
 
-## Operazioni comuni
+- Login + **MFA** (TOTP) con **codici di recupero** monouso; blocco dopo 5 tentativi falliti/15 min
+- **CSRF** su tutte le rotte che modificano, header di sicurezza (CSP, HSTS, X-Frame-Options)
+- Cambio password / reset MFA **invalida le sessioni aperte** (`session_version` nel cookie firmato)
+- **Audit log** di: crea/elimina utente, attiva/disattiva utente, reset MFA, crea/elimina
+  cliente, revoca certificato, crea/elimina notifica, crea allarme, modifica SMTP,
+  cambio password. Mai registrati: password, token, URL di destinazione dei webhook.
+  **Non coperti**: emissione certificati (a ogni download pacchetto agent), download archivi.
+- Revoca certificati: la CRL viene generata ma **Graylog non la applica** (vedi `NGINX-CRL-PROXY.md`)
 
-**Aggiungere un cliente**: scheda Clienti nel pannello - crea automaticamente
-stream+index set Graylog, certificato, e i pacchetti agent scaricabili.
+## Operazioni pianificate (cron di root sul nodo) — da verificare con `crontab -l`
 
-**Aggiornare il codice** (dopo una modifica): commit+tag su Git → aspetta
-CI verde → aggiorna la versione in `build-images.sh` del modulo NS8
-interessato → ricostruisci con `build-images.sh` → `buildah push` →
-`update-module` sul nodo → verifica/correggi la variabile immagine in
-`.config/state/environment` se necessario → riavvia il servizio →
-**controlla sempre i log** (`journalctl --user -u <servizio>`), non
-fidarti solo che il comando sia andato a buon fine.
+Da root, un `podman exec` semplice NON funziona (container rootless): serve il giro
+`sudo -u` e `cd /tmp`. Righe corrette:
 
-**Rotazione credenziali**: vedi `ROTAZIONE-CREDENZIALI.md`.
+```
+0 3 * * *    cd /tmp && sudo -u logplatform-auth16 XDG_RUNTIME_DIR=/run/user/$(id -u logplatform-auth16) podman exec logplatform-auth python3 -m app.send_nightly_report >> /var/log/logplatform-report.log 2>&1
+*/20 * * * * cd /tmp && sudo -u logplatform-auth16 XDG_RUNTIME_DIR=/run/user/$(id -u logplatform-auth16) podman exec logplatform-auth python3 -m app.check_offline_devices >> /var/log/logplatform-offline-check.log 2>&1
+0 * * * *    /root/logmanager/final-package/scripts/check_disk_space.sh >> /var/log/logplatform-disk-check.log 2>&1
+30 2 * * *   /root/logmanager/final-package/scripts/backup.sh >> /var/log/logplatform-backup.log 2>&1
+30 6 * * *   /root/logmanager/final-package/scripts/verifica_backup.sh >> /var/log/logplatform-backup-verify.log 2>&1 || { cd /tmp && sudo -u logplatform-auth16 XDG_RUNTIME_DIR=/run/user/$(id -u logplatform-auth16) podman exec logplatform-auth python3 -m app.send_alert_email "Backup NON valido su $(hostname)" "verifica_backup.sh ha segnalato problemi: vedi /var/log/logplatform-backup-verify.log"; }
+```
+(l'ultima riga manda un'email SOLO se la verifica del backup fallisce: le graffe
+sono necessarie, senza `A || B && C` si leggerebbe `(A || B) && C` e l'email
+partirebbe sempre)
 
-**Ripristino da backup**: vedi `scripts/RIPRISTINO.md`.
+## Procedura di aggiornamento
 
-## Cose da sapere prima di modificare qualcosa
+commit + tag → CI verde → versione in `build-images.sh` del modulo → `./build-images.sh` →
+`buildah push` → `update-module` → controlla `AUTH_SERVICE_IMAGE` in
+`.config/state/environment` e che il file systemd live contenga le variabili attese
+(`update-module` non sempre lo rigenera) → riavvia → **leggi i log**.
+Le patch ai file usano ancoraggi di testo esatto (confronto su testo grezzo): attenzione
+a backslash e indentazione. Un cambiamento a `gate/login.html` richiede di ricostruire anche `gate`.
 
-- I comandi `sudo -u <istanza>` falliscono se lanciati da una cartella
-  di proprietà di `root` (es. dentro il repo) - fai sempre `cd /tmp`
-  prima.
-- I volumi podman con SELinux (di default su questo sistema, RHEL-based)
-  possono dare problemi di permessi con bind-mount ad-hoc - preferisci
-  `podman exec` dentro un container già in esecuzione quando possibile.
-- `update-module` non sempre rigenera il file systemd dal template -
-  verifica sempre con `grep` dopo, non darlo per scontato.
-- Ogni modifica a `dashboard.html` va fatta con uno script di patch che
-  verifica il testo esatto prima di sostituire (mai una sostituzione
-  "alla cieca") - il file è troppo importante e troppo modificato nel
-  tempo per rischiare di romperlo con un replace impreciso.
+## Cosa manca ancora (stato onesto)
 
-## Cosa manca ancora (stato a questa data)
-
-- Enforcement reale della revoca certificati (CRL) - disegnato, non applicato
-- Rotazione credenziali - mai fatta da quando sono state generate
-- Marca temporale RFC3161 qualificata (Namirial) - in attesa di contratto/credenziali
-- Ridondanza multi-nodo - tutto gira su una singola macchina
-- Suite di test automatici in CI - i bug finora sono stati trovati testando a mano
+- **Credenziali mai ruotate** dalla prima generazione (Graylog admin, MariaDB, token GitHub)
+- **Ripristino da backup mai provato** su una macchina pulita
+- **Blocco USB e installer grafico** mai verificati su un Windows reale oltre all'esito del rilevamento servizio
+- **Relay syslog** mai provato con un dispositivo di rete reale
+- Servizio Windows che si ferma: causa ignota
+- Proxy CRL (revoca reale), marca temporale qualificata (Namirial), ridondanza multi-nodo
+- Nessun ambiente di staging separato
