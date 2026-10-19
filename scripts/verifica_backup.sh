@@ -86,7 +86,7 @@ elif ! tar -tzf "$CA" >/dev/null 2>&1; then
 else
     ELENCO=$(tar -tzf "$CA")
     for f in ca-key.pem ca.pem certs.db; do
-        if echo "$ELENCO" | grep -q "$f"; then
+        if [[ "$ELENCO" == *"$f"* ]]; then
             ok "volume CA contiene $f"
         else
             fail "volume CA NON contiene $f (senza la chiave della CA i certificati non sono ripristinabili)"
@@ -100,10 +100,17 @@ if [[ ! -s "$ARC" ]]; then
     fail "archives-volume.tar.gz mancante o vuoto"
 elif ! tar -tzf "$ARC" >/dev/null 2>&1; then
     fail "archives-volume.tar.gz corrotto (tar non riesce a leggerlo)"
-elif tar -tzf "$ARC" | grep -q "archive_ledger.db"; then
-    ok "volume archivi integro e contiene il registro (archive_ledger.db)"
 else
-    fail "volume archivi NON contiene archive_ledger.db"
+    # Niente pipe verso 'grep -q': con 'pipefail', grep esce al primo risultato, tar riceve
+    # SIGPIPE e la pipeline risulta fallita anche se il file c'e' (falso allarme casuale,
+    # tanto piu' frequente quanto piu' grande e' il volume). Si legge tutto l'elenco e si
+    # confronta in bash.
+    ELENCO_ARC=$(tar -tzf "$ARC" 2>/dev/null)
+    if [[ "$ELENCO_ARC" == *archive_ledger.db* ]]; then
+        ok "volume archivi integro e contiene il registro (archive_ledger.db)"
+    else
+        fail "volume archivi NON contiene archive_ledger.db"
+    fi
 fi
 
 # --- Stato dei moduli NS8 ---
