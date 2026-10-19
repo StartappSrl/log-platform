@@ -26,6 +26,7 @@ l'esito dei controlli: i problemi trovati sono il contenuto della mail.
 """
 import argparse
 import html
+import json
 import os
 import re
 import shutil
@@ -159,6 +160,122 @@ def collect_log_job(nome, path, now, max_age_h, ok_marker, ok_label):
     if state == "fail":
         return check(nome, "fail", ["Ultima esecuzione fallita", last_line[:160]])
     return check(nome, "warn", ["Il log è recente ma non contiene un esito riconoscibile"])
+
+
+# Interroga Graylog dall'interno del container auth (che ha gia' le credenziali nell'ambiente:
+# nessuna password nello script del nodo). Stampa UNA riga 'FLUSSO_JSON {...}'.
+FLOW_SCRIPT = r'''
+import json, os, requests
+from datetime import datetime, timezone
+base = os.environ['GRAYLOG_URL']
+auth = (os.environ['GRAYLOG_API_USER'], os.environ['GRAYLOG_API_PASSWORD'])
+HDR = {'Accept': 'application/json'}
+
+
+def search(sec, limit):
+    r = requests.get(base + '/api/search/universal/relative', auth=auth, headers=HDR, timeout=120,
+                     params={'query': '*', 'range': sec, 'limit': limit, 'sort': 'timestamp:desc',
+                             'fields': 'timestamp,source,tenant'})
+    r.raise_for_status()
+    return r.json()
+
+
+def age(ts):
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(str(ts).replace('Z', '+00:00'))).total_seconds()
+
+
+out = {'error': None}
+try:
+    d, err = None, None
+    for lim in (5000, 1000):
+        try:
+            d = search(86400, lim)
+            break
+        except Exception as e:
+            err = e
+    if d is None:
+        raise err
+    msgs = [m['message'] for m in (d.get('messages') or [])]
+    out['n24'] = d.get('total_results') or 0
+    out['campione'] = len(msgs)
+    devs = {}
+    for m in msgs:
+        devs.setdefault(m.get('tenant') or '?', set()).add(m.get('source') or '?')
+    out['dispositivi'] = {t: len(v) for t, v in sorted(devs.items())}
+    last = msgs[0] if msgs else None
+    if last is None:
+        older = search(2592000, 1).get('messages') or []
+        last = older[0]['message'] if older else None
+    out['ultimo'] = ({'eta_s': age(last['timestamp']), 'source': last.get('source'), 'tenant': last.get('tenant')}
+                     if last else None)
+except Exception as e:
+    out['error'] = (type(e).__name__ + ': ' + str(e).split(' for url')[0])[:200]
+print('FLUSSO_JSON ' + json.dumps(out))
+'''
+
+
+def fmt_int(n):
+    return f"{n:,}".replace(",", ".")
+
+
+def fmt_age(seconds):
+    if seconds < 7200:
+        return f"{seconds / 60:.0f} minuti fa"
+    if seconds < 172800:
+        return f"{seconds / 3600:.0f} ore fa"
+    return f"{seconds / 86400:.1f} giorni fa"
+
+
+def _auth_instance(run, home="/home"):
+    try:
+        names = os.listdir(home)
+    except OSError:
+        return None, None
+    inst = next((n for n in sorted(names) if re.fullmatch(r"logplatform-auth\d+", n)), None)
+    if inst is None:
+        return None, None
+    return inst, run(["id", "-u", inst])[1].strip()
+
+
+def collect_flow(run, now, home="/home"):
+    """Il controllo che, se fosse esistito, avrebbe mostrato 'zero log' la mattina del 5 ottobre:
+    senza dispositivi non c'e' nessuno da segnalare come offline, quindi il silenzio totale
+    non fa scattare altri avvisi."""
+    nome = "Flusso dei log"
+    inst, uid = _auth_instance(run, home)
+    if inst is None:
+        return check(nome, "fail", ["Istanza auth non trovata: impossibile interrogare Graylog"])
+    rc, out, err = run(["sudo", "-u", inst, f"XDG_RUNTIME_DIR=/run/user/{uid}", "podman", "exec", "-i",
+                        "logplatform-auth", "python3", "-W", "ignore", "-"], input_text=FLOW_SCRIPT)
+    if rc != 0:
+        return check(nome, "fail", ["Impossibile interrogare Graylog dal container auth",
+                                    (err or out).strip()[-160:]])
+    line = next((l for l in reversed(out.splitlines()) if l.startswith("FLUSSO_JSON ")), None)
+    if line is None:
+        return check(nome, "fail", ["Risposta non leggibile dal controllo del flusso"])
+    try:
+        data = json.loads(line[len("FLUSSO_JSON "):])
+    except ValueError:
+        return check(nome, "fail", ["Risposta non leggibile dal controllo del flusso"])
+    if data.get("error"):
+        return check(nome, "fail", ["Graylog non ha risposto correttamente", data["error"]])
+
+    n = data.get("n24", 0)
+    righe = [f"Messaggi ricevuti nelle ultime 24 ore: {fmt_int(n)}"]
+    ult = data.get("ultimo")
+    if n == 0:
+        righe.append("Dispositivi attivi nelle ultime 24 ore: nessuno")
+        righe.append(f"Ultimo messaggio ricevuto: {fmt_age(ult['eta_s'])} da {ult['source']} (cliente {ult['tenant']})"
+                     if ult else "Nessun messaggio ricevuto negli ultimi 30 giorni")
+        return check(nome, "fail", righe)
+    per_cliente = data.get("dispositivi", {})
+    troncato = data.get("campione", 0) < n
+    righe.append(f"Dispositivi attivi nelle ultime 24 ore: {'almeno ' if troncato else ''}{sum(per_cliente.values())}")
+    for cliente, k in list(per_cliente.items())[:10]:
+        righe.append(f"{cliente}: {k} {'dispositivo' if k == 1 else 'dispositivi'}")
+    if ult:
+        righe.append(f"Ultimo messaggio ricevuto: {fmt_age(ult['eta_s'])}")
+    return check(nome, "ok", righe)
 
 
 _UNITS_IT = {"second": ("secondo", "secondi"), "minute": ("minuto", "minuti"), "hour": ("ora", "ore"),
@@ -317,6 +434,7 @@ def safe(nome, fn, *args):
 
 def gather(run, now):
     return [
+        safe("Flusso dei log", collect_flow, run, now),
         safe("Backup", collect_backup, run, now),
         safe("Spazio disco", collect_disk, "/"),
         safe("Report notturno ai clienti", collect_log_job, "Report notturno ai clienti",
@@ -342,6 +460,9 @@ def main():
 
     for c in checks:
         print(f"{c['stato'].upper():5} {c['nome']}")
+        if c["stato"] != "ok":          # il motivo subito, senza dover aprire l'HTML
+            for riga in c["righe"]:
+                print(f"        {riga}")
 
     if args.dry_run:
         with open(args.out, "w", encoding="utf-8") as f:

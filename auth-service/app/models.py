@@ -38,6 +38,9 @@ class Tenant(db.Model):
     email = db.Column(db.String(255), nullable=True)
     note = db.Column(db.Text, nullable=True)
 
+    # Riepilogo settimanale al cliente: SPENTO di default, si attiva cliente per cliente
+    weekly_report_enabled = db.Column(db.Boolean, default=False, nullable=False)
+
 
 class FailedLogin(db.Model):
     __tablename__ = "failed_logins"

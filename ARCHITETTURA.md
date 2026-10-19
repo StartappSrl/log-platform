@@ -79,7 +79,7 @@ Il campo `headers` NON è valido nella config HTTP di Graylog (rifiutato con 400
 auth-service/app/   dashboard.py (quasi tutte le rotte), models.py, graylog_client.py,
                     routes.py (login/MFA), auth_utils.py (sessioni), mfa.py, cert_ledger.py,
                     archive_storage.py, agent_packager.py, nightly_report.py, email_sender.py,
-                    send_alert_email.py, send_html_stdin.py, send_nightly_report.py, check_offline_devices.py,
+                    send_alert_email.py, send_html_stdin.py, customer_report.py, send_customer_reports.py, send_nightly_report.py, check_offline_devices.py,
                     platform_health.py, inventory_pdf.py
 auth-service/static/ dashboard.html, login (frontend tutto in questi file)
 auth-service/agent_templates/  copia dei file agent usata per generare i pacchetti
@@ -95,7 +95,7 @@ fondo): cercare con `grep` per nome di funzione, non scorrere il file.
 
 ## Tabelle principali (MariaDB)
 
-`tenants` (anagrafica) · `users` (MFA, `mfa_backup_codes`, `session_version`) ·
+`tenants` (anagrafica, `weekly_report_enabled`) · `users` (MFA, `mfa_backup_codes`, `session_version`) ·
 `smtp_settings` (una riga, id=1) · `audit_log` · `offline_alert_state` · `failed_logins`.
 Dopo ogni nuova colonna/tabella serve una migrazione SQL manuale (non c'è un tool di migrazioni).
 
@@ -122,6 +122,8 @@ Da root, un `podman exec` semplice NON funziona (container rootless): serve il g
 30 2 * * *   /root/logmanager/final-package/scripts/backup.sh >> /var/log/logplatform-backup.log 2>&1
 30 6 * * *   /root/logmanager/final-package/scripts/verifica_backup.sh >> /var/log/logplatform-backup-verify.log 2>&1 || { cd /tmp && sudo -u logplatform-auth16 XDG_RUNTIME_DIR=/run/user/$(id -u logplatform-auth16) podman exec logplatform-auth python3 -m app.send_alert_email "Backup NON valido su $(hostname)" "verifica_backup.sh ha segnalato problemi: vedi /var/log/logplatform-backup-verify.log"; }
 45 6 * * *   /usr/bin/python3 /root/logmanager/final-package/scripts/esito_notturno.py >> /var/log/logplatform-esito.log 2>&1
+# (attivare dopo il collaudo) riepilogo settimanale ai clienti, il lunedì alle 07:30
+# 30 7 * * 1   cd /tmp && sudo -u logplatform-auth16 XDG_RUNTIME_DIR=/run/user/$(id -u logplatform-auth16) podman exec logplatform-auth python3 -m app.send_customer_reports >> /var/log/logplatform-customer-reports.log 2>&1
 ```
 (la riga di `verifica_backup.sh` manda un'email SOLO se la verifica del backup fallisce: le graffe
 sono necessarie, senza `A || B && C` si leggerebbe `(A || B) && C` e l'email
@@ -130,12 +132,30 @@ partirebbe sempre)
 ## Mail di esito dei controlli notturni
 
 Ogni mattina alle 06:45 `scripts/esito_notturno.py` (gira sul nodo) manda una mail HTML con
-l'esito di: backup (verifica di integrità, età, dimensione), disco, ultimo report notturno,
+l'esito di: flusso dei log (messaggi e dispositivi attivi nelle ultime 24 ore, rosso se zero),
+backup (verifica di integrità, età, dimensione), disco, ultimo report notturno,
 ultimo controllo dispositivi offline, moduli in esecuzione, ultimo riavvio del nodo. Parte
 **anche quando va tutto bene**: se una mattina non arriva, il controllo (o il nodo) non gira.
 L'invio passa dal container `auth` (`python3 -m app.send_html_stdin`, SMTP di Impostazioni,
 destinatari del report notturno). `--dry-run` genera l'HTML in /tmp senza inviare.
 Limite: se il nodo intero è spento non parte nulla, serve un controllo esterno (uptime monitor).
+
+## Riepilogo settimanale ai clienti
+
+Mail HTML destinata al CLIENTE (non all'amministratore): stato dei suoi dispositivi, attività
+della settimana per giorno, aggiornamenti in sospeso. Codice: `customer_report.py` (raccolta e
+impaginazione) e `send_customer_reports.py` (comando, `python3 -m app.send_customer_reports`).
+- **Spento di default**: si attiva cliente per cliente (`tenants.weekly_report_enabled`), serve
+  l'email del referente nell'anagrafica.
+- **Isolamento**: ogni interrogazione a Graylog porta `filter=streams:<stream del cliente>`
+  (c'è un test che lo verifica); la mail non contiene mai dati di altri clienti né dettagli interni.
+- **Niente falsi allarmi nostri**: se Graylog non risponde per un cliente, quel cliente non riceve nulla.
+- Ogni invio vero lascia una riga nel log di controllo (utente `sistema`) e una copia ai destinatari
+  del report notturno.
+- Collaudo: `--dry-run` (scrive l'HTML in /tmp), `--to indirizzo --include-disabled` (tutto solo a
+  quell'indirizzo con oggetto `[PROVA]`, mai ai clienti). `--include-disabled` senza `--to`/`--dry-run` è rifiutato.
+- Limite: l'elenco dispositivi si ricava dai messaggi più recenti (fino a 5000); con volumi molto alti
+  un dispositivo muto da giorni potrebbe non comparire (la mail lo segnala).
 
 ## Procedura di aggiornamento
 

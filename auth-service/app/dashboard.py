@@ -862,3 +862,30 @@ def tenant_storage_size_route(name):
         "bytes": size_bytes,
         "human": gl.format_bytes_human(size_bytes) if size_bytes is not None else None,
     })
+
+
+# --- Riepilogo settimanale ai clienti: attivazione per cliente ---
+
+@dash.get("/customer-reports")
+@admin_required
+def list_customer_reports_route():
+    rows = Tenant.query.order_by(Tenant.name).all()
+    return jsonify([{"name": t.name, "display_name": t.display_name or t.name, "email": t.email,
+                     "enabled": bool(t.weekly_report_enabled)} for t in rows])
+
+
+@dash.post("/tenants/<name>/customer-report")
+@admin_required
+@csrf_protect
+def set_customer_report_route(name):
+    t = Tenant.query.filter_by(name=name).first()
+    if not t:
+        return jsonify(error="cliente non trovato"), 404
+    data = request.get_json(force=True, silent=True) or {}
+    enabled = bool(data.get("enabled"))
+    if enabled and "@" not in (t.email or ""):
+        return jsonify(error="manca l'email del referente nell'anagrafica del cliente"), 400
+    t.weekly_report_enabled = enabled
+    db.session.commit()
+    record_audit("report_clienti_attivato" if enabled else "report_clienti_disattivato", f"cliente={t.name}")
+    return jsonify(ok=True, enabled=enabled)
