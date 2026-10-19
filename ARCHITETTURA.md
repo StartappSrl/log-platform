@@ -79,14 +79,14 @@ Il campo `headers` NON è valido nella config HTTP di Graylog (rifiutato con 400
 auth-service/app/   dashboard.py (quasi tutte le rotte), models.py, graylog_client.py,
                     routes.py (login/MFA), auth_utils.py (sessioni), mfa.py, cert_ledger.py,
                     archive_storage.py, agent_packager.py, nightly_report.py, email_sender.py,
-                    send_alert_email.py, send_nightly_report.py, check_offline_devices.py,
+                    send_alert_email.py, send_html_stdin.py, send_nightly_report.py, check_offline_devices.py,
                     platform_health.py, inventory_pdf.py
 auth-service/static/ dashboard.html, login (frontend tutto in questi file)
 auth-service/agent_templates/  copia dei file agent usata per generare i pacchetti
 agent/              agent.py, agent_windows.py, inventory.py, local_archive.py, gelf_transport.py,
                     syslog_relay.py, syslog_parser.py, usb_block.py, installer_gui.py, installer_logic.py
 gate/               login.html, nginx.conf.template
-scripts/            backup.sh, restore.sh, verifica_backup.sh, check_disk_space.sh, seal-admin-logs.sh
+scripts/            backup.sh, restore.sh, verifica_backup.sh, esito_notturno.py, check_disk_space.sh, seal-admin-logs.sh
 tests/              test di non-regressione (pytest, girano in CI)
 .github/workflows/  build-images.yml, build-windows-agent.yml, tests.yml
 ```
@@ -121,10 +121,21 @@ Da root, un `podman exec` semplice NON funziona (container rootless): serve il g
 0 * * * *    /root/logmanager/final-package/scripts/check_disk_space.sh >> /var/log/logplatform-disk-check.log 2>&1
 30 2 * * *   /root/logmanager/final-package/scripts/backup.sh >> /var/log/logplatform-backup.log 2>&1
 30 6 * * *   /root/logmanager/final-package/scripts/verifica_backup.sh >> /var/log/logplatform-backup-verify.log 2>&1 || { cd /tmp && sudo -u logplatform-auth16 XDG_RUNTIME_DIR=/run/user/$(id -u logplatform-auth16) podman exec logplatform-auth python3 -m app.send_alert_email "Backup NON valido su $(hostname)" "verifica_backup.sh ha segnalato problemi: vedi /var/log/logplatform-backup-verify.log"; }
+45 6 * * *   /usr/bin/python3 /root/logmanager/final-package/scripts/esito_notturno.py >> /var/log/logplatform-esito.log 2>&1
 ```
-(l'ultima riga manda un'email SOLO se la verifica del backup fallisce: le graffe
+(la riga di `verifica_backup.sh` manda un'email SOLO se la verifica del backup fallisce: le graffe
 sono necessarie, senza `A || B && C` si leggerebbe `(A || B) && C` e l'email
 partirebbe sempre)
+
+## Mail di esito dei controlli notturni
+
+Ogni mattina alle 06:45 `scripts/esito_notturno.py` (gira sul nodo) manda una mail HTML con
+l'esito di: backup (verifica di integrità, età, dimensione), disco, ultimo report notturno,
+ultimo controllo dispositivi offline, moduli in esecuzione, ultimo riavvio del nodo. Parte
+**anche quando va tutto bene**: se una mattina non arriva, il controllo (o il nodo) non gira.
+L'invio passa dal container `auth` (`python3 -m app.send_html_stdin`, SMTP di Impostazioni,
+destinatari del report notturno). `--dry-run` genera l'HTML in /tmp senza inviare.
+Limite: se il nodo intero è spento non parte nulla, serve un controllo esterno (uptime monitor).
 
 ## Procedura di aggiornamento
 
