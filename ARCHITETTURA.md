@@ -179,7 +179,9 @@ impaginazione) e `send_customer_reports.py` (comando, `python3 -m app.send_custo
   o aggiorna il controllo corrispondente. Verificato con difetti iniettati apposta: il filtro dello stream tolto,
   `--include-disabled` senza `--to`, il falso allarme SIGPIPE, l'HTML non neutralizzato, il registro che non
   segnala più i dispositivi muti: ogni difetto fa fallire il controllo giusto.
-- Non coperto dai test: la resa delle mail nei client di posta, le rotte del pannello (`dashboard.py`) e il
+- Le rotte di modifica dell'anagrafica cliente sono coperte da `check_anagrafica_cliente`, che le estrae da
+  `dashboard.py` tra i marcatori `# --- Anagrafica cliente: inizio ---` e `# --- ...: fine ---`: non spostarli.
+- Non coperto dai test: la resa delle mail nei client di posta, le altre rotte del pannello (`dashboard.py`) e il
   giro vero con podman/NS8 sul nodo.
 
 ## Procedura di aggiornamento

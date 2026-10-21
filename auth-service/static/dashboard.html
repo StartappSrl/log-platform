@@ -531,7 +531,7 @@ async function loadTenants() {
     document.getElementById('tenants-empty').style.display = tenants.length ? 'none' : 'block';
     tenants.forEach(t => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td id="storage-${t.name}">...</td><td id="crep-${t.name}">...</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a> | <a href="#" onclick="deleteTenant('${t.name}');return false;" style="color:#dc2626">Elimina</a></td>`;
+      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td id="storage-${t.name}">...</td><td id="crep-${t.name}">...</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a> | <a href="#" onclick="editTenant('${t.name}');return false;">Modifica</a> | <a href="#" onclick="deleteTenant('${t.name}');return false;" style="color:#dc2626">Elimina</a></td>`;
       tbody.appendChild(tr);
       loadTenantStorageSize(t.name);
     });
@@ -576,6 +576,124 @@ async function toggleCustomerReport(name, cb) {
     showError(e.message);
   } finally {
     cb.disabled = false;
+  }
+}
+
+const EDIT_TENANT_FIELDS = [
+  ['display_name', 'Nome visualizzato'],
+  ['ragione_sociale', 'Ragione sociale'],
+  ['partita_iva', 'P.IVA / Codice fiscale'],
+  ['indirizzo', 'Indirizzo'],
+  ['referente', 'Referente'],
+  ['email', 'Email del referente (più indirizzi: separali con una virgola)'],
+  ['note', 'Note'],
+];
+const EDIT_EMAIL_RE = /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$/;
+let editTenantName = null;
+let editTenantOriginal = null;
+
+function editTenantMessage(kind, text) {
+  const err = document.getElementById('edit-tenant-error');
+  const info = document.getElementById('edit-tenant-info');
+  err.style.display = 'none';
+  info.style.display = 'none';
+  if (!text) return;
+  const box = kind === 'error' ? err : info;
+  box.textContent = text;
+  box.style.display = 'block';
+}
+
+function closeTenantEdit() {
+  document.getElementById('edit-tenant-overlay').style.display = 'none';
+  editTenantName = null;
+  editTenantOriginal = null;
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && editTenantName) closeTenantEdit(); });
+
+async function editTenant(name) {
+  editTenantName = name;
+  editTenantOriginal = null;
+  const fields = document.getElementById('edit-tenant-fields');
+  document.getElementById('edit-tenant-overlay').style.display = 'flex';
+  document.getElementById('edit-tenant-id').textContent = `Identificativo: ${name} (non modificabile)`;
+  document.getElementById('edit-tenant-save').disabled = true;
+  fields.textContent = 'Caricamento…';
+  editTenantMessage('', '');
+  try {
+    const d = await api(`/_authgate/dashboard/tenants/${encodeURIComponent(name)}/anagrafica`);
+    if (editTenantName !== name) return;          // chiusa o cambiata nel frattempo: ignoro la risposta
+    editTenantOriginal = d;
+    fields.textContent = '';
+    EDIT_TENANT_FIELDS.forEach(([campo, etichetta]) => {
+      const wrap = document.createElement('div');
+      wrap.style.marginBottom = '12px';
+      const lab = document.createElement('label');
+      lab.htmlFor = `edit-${campo}`;
+      lab.style.cssText = 'display:block;font-size:13px;color:#334155;margin-bottom:3px;';
+      lab.textContent = etichetta;
+      const tag = document.createElement('span');
+      tag.id = `edit-tag-${campo}`;
+      tag.textContent = 'mancante';
+      tag.style.cssText = 'margin-left:8px;font-size:11px;font-weight:bold;color:#92400e;background:#fef3c7;padding:1px 7px;border-radius:9px;';
+      const inp = campo === 'note' ? document.createElement('textarea') : document.createElement('input');
+      if (campo === 'note') inp.rows = 3; else inp.type = 'text';
+      inp.id = `edit-${campo}`;
+      inp.value = d[campo] || '';
+      inp.style.cssText = 'width:100%;box-sizing:border-box;padding:7px 9px;font-size:14px;';
+      const aggiorna = () => {
+        const vuoto = inp.value.trim() === '';
+        tag.style.display = vuoto ? 'inline' : 'none';
+        inp.style.border = vuoto ? '1px solid #d97706' : '1px solid #cbd5e1';
+      };
+      inp.addEventListener('input', aggiorna);
+      aggiorna();
+      lab.appendChild(tag);
+      wrap.appendChild(lab);
+      wrap.appendChild(inp);
+      fields.appendChild(wrap);
+    });
+    document.getElementById('edit-tenant-save').disabled = false;
+  } catch (e) {
+    if (editTenantName !== name) return;
+    fields.textContent = '';
+    editTenantMessage('error', e.message);
+  }
+}
+
+async function saveTenantEdit() {
+  if (!editTenantName || !editTenantOriginal) return;
+  const name = editTenantName;
+  const orig = editTenantOriginal;
+  const cambiati = {};
+  EDIT_TENANT_FIELDS.forEach(([campo]) => {
+    const nuovo = document.getElementById(`edit-${campo}`).value.trim();
+    if (nuovo !== (orig[campo] || '').trim()) cambiati[campo] = nuovo;
+  });
+  editTenantMessage('', '');
+  if (Object.keys(cambiati).length === 0) {
+    editTenantMessage('info', 'Nessuna modifica da salvare.');
+    return;
+  }
+  if (cambiati.email) {
+    const cattivi = cambiati.email.split(/[;,]/).map(x => x.trim()).filter(Boolean)
+      .filter(x => !EDIT_EMAIL_RE.test(x) || x.toLowerCase().endsWith('.invalid'));
+    if (cattivi.length) {
+      editTenantMessage('error', `Email non valida: ${cattivi.join(', ')}`);
+      return;
+    }
+  }
+  const btn = document.getElementById('edit-tenant-save');
+  btn.disabled = true;
+  try {
+    await api(`/_authgate/dashboard/tenants/${encodeURIComponent(name)}/anagrafica`,
+              { method: 'POST', body: JSON.stringify(cambiati) });
+    closeTenantEdit();
+    await loadTenants();
+  } catch (e) {
+    editTenantMessage('error', e.message);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -1188,5 +1306,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('allarme-tenant').addEventListener('change', loadAlarms);
 });
 </script>
+<!-- Modifica cliente -->
+<div id="edit-tenant-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(15,27,51,.55);z-index:1000;align-items:center;justify-content:center;padding:16px;">
+  <div role="dialog" aria-modal="true" aria-labelledby="edit-tenant-title" style="background:#fff;max-width:560px;width:100%;max-height:90vh;overflow:auto;padding:22px 24px;border-top:4px solid #0F1B33;box-shadow:0 10px 40px rgba(0,0,0,.3);">
+    <div id="edit-tenant-title" style="font-size:18px;font-weight:bold;color:#0F1B33;">Modifica cliente</div>
+    <div id="edit-tenant-id" style="font-size:13px;color:#64748b;margin:4px 0 14px 0;"></div>
+    <div id="edit-tenant-fields"></div>
+    <div id="edit-tenant-error" style="display:none;margin-top:12px;padding:9px 12px;background:#fee2e2;color:#991b1b;font-size:13px;"></div>
+    <div id="edit-tenant-info" style="display:none;margin-top:12px;padding:9px 12px;background:#f1f5f9;color:#475569;font-size:13px;"></div>
+    <div style="margin-top:18px;text-align:right;">
+      <button type="button" id="edit-tenant-cancel" onclick="closeTenantEdit()" style="padding:8px 16px;font-size:14px;background:#fff;color:#334155;border:1px solid #cbd5e1;cursor:pointer;">Annulla</button>
+      <button type="button" id="edit-tenant-save" onclick="saveTenantEdit()" style="padding:8px 16px;font-size:14px;background:#0F1B33;color:#fff;border:1px solid #0F1B33;cursor:pointer;margin-left:6px;">Salva modifiche</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

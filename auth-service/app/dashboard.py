@@ -889,3 +889,70 @@ def set_customer_report_route(name):
     db.session.commit()
     record_audit("report_clienti_attivato" if enabled else "report_clienti_disattivato", f"cliente={t.name}")
     return jsonify(ok=True, enabled=enabled)
+
+
+# --- Anagrafica cliente: inizio ---
+import re as _re_anagrafica
+
+# campo modificabile -> lunghezza massima (uguale alla colonna). 'name' e gli id di Graylog NON sono modificabili.
+_ANAGRAFICA_CAMPI = {
+    "display_name": 200, "ragione_sociale": 255, "partita_iva": 50,
+    "indirizzo": 500, "referente": 255, "email": 255, "note": 5000,
+}
+_ANAGRAFICA_EMAIL = _re_anagrafica.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}")
+
+
+@dash.get("/tenants/<name>/anagrafica")
+@admin_required
+def get_tenant_anagrafica_route(name):
+    t = Tenant.query.filter_by(name=name).first()
+    if not t:
+        return jsonify(error="cliente non trovato"), 404
+    out = {"name": t.name, "weekly_report_enabled": bool(t.weekly_report_enabled)}
+    for campo in _ANAGRAFICA_CAMPI:
+        out[campo] = getattr(t, campo) or ""
+    return jsonify(out)
+
+
+@dash.post("/tenants/<name>/anagrafica")
+@admin_required
+@csrf_protect
+def update_tenant_anagrafica_route(name):
+    t = Tenant.query.filter_by(name=name).first()
+    if not t:
+        return jsonify(error="cliente non trovato"), 404
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict) or not data:
+        return jsonify(error="nessun campo da modificare"), 400
+    estranei = sorted(str(k) for k in data if k not in _ANAGRAFICA_CAMPI)
+    if estranei:
+        return jsonify(error="campo non modificabile: " + ", ".join(estranei)), 400
+    nuovi = {}
+    for campo, valore in data.items():
+        if valore is None:
+            valore = ""
+        if not isinstance(valore, str):
+            return jsonify(error=f"valore non valido per {campo}"), 400
+        valore = valore.strip()
+        if len(valore) > _ANAGRAFICA_CAMPI[campo]:
+            return jsonify(error=f"{campo}: massimo {_ANAGRAFICA_CAMPI[campo]} caratteri"), 400
+        nuovi[campo] = valore
+    if nuovi.get("email"):
+        indirizzi = [a.strip() for a in _re_anagrafica.split(r"[;,]", nuovi["email"]) if a.strip()]
+        cattivi = [a for a in indirizzi if not _ANAGRAFICA_EMAIL.fullmatch(a) or a.lower().endswith(".invalid")]
+        if not indirizzi or cattivi:
+            return jsonify(error="email non valida: " + (", ".join(cattivi) or "(vuota)")), 400
+        nuovi["email"] = ", ".join(indirizzi)
+    if "email" in nuovi and not nuovi["email"] and t.weekly_report_enabled:
+        return jsonify(error="il riepilogo settimanale e' attivo per questo cliente: disattivalo prima di togliere l'email"), 400
+    modificati = []
+    for campo, valore in nuovi.items():
+        if valore != (getattr(t, campo) or ""):
+            setattr(t, campo, valore or None)
+            modificati.append(campo)
+    if modificati:
+        db.session.commit()
+        record_audit("cliente_modificato", f"cliente={t.name} campi={','.join(sorted(modificati))}")
+    risposta = {c: getattr(t, c) or "" for c in _ANAGRAFICA_CAMPI}
+    return jsonify(ok=True, modificati=sorted(modificati), **risposta)
+# --- Anagrafica cliente: fine ---
