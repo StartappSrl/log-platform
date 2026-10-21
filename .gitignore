@@ -22,3 +22,4 @@ restore-tmp/
 __pycache__/
 *.pyc
 node_modules/
+*.before-*

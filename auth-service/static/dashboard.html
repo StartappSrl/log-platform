@@ -151,7 +151,7 @@
       </div>
     </div>
     <table id="tenants-table">
-      <thead><tr><th>Identificativo</th><th>Nome</th><th>Ragione sociale</th><th>P.IVA/CF</th><th>Referente</th><th>Email</th><th>Stream Graylog</th><th>Spazio</th><th>Agent</th></tr></thead>
+      <thead><tr><th>Identificativo</th><th>Nome</th><th>Ragione sociale</th><th>P.IVA/CF</th><th>Referente</th><th>Email</th><th>Stream Graylog</th><th>Spazio</th><th>Riepilogo clienti</th><th>Agent</th></tr></thead>
       <tbody></tbody>
     </table>
     <div class="empty" id="tenants-empty" style="display:none">Nessun cliente ancora. Creane uno sopra.</div>
@@ -531,11 +531,52 @@ async function loadTenants() {
     document.getElementById('tenants-empty').style.display = tenants.length ? 'none' : 'block';
     tenants.forEach(t => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td id="storage-${t.name}">...</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a> | <a href="#" onclick="deleteTenant('${t.name}');return false;" style="color:#dc2626">Elimina</a></td>`;
+      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td id="storage-${t.name}">...</td><td id="crep-${t.name}">...</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a> | <a href="#" onclick="deleteTenant('${t.name}');return false;" style="color:#dc2626">Elimina</a></td>`;
       tbody.appendChild(tr);
       loadTenantStorageSize(t.name);
     });
+    loadCustomerReportSettings();
   } catch (e) { showError(e.message); }
+}
+
+async function loadCustomerReportSettings() {
+  try {
+    const rows = await api('/_authgate/dashboard/customer-reports');
+    rows.forEach(r => {
+      const cell = document.getElementById(`crep-${r.name}`);
+      if (!cell) return;
+      cell.innerHTML = '<label style="font-weight:normal;font-size:.9em;white-space:nowrap">'
+        + `<input type="checkbox" ${r.enabled ? 'checked' : ''} ${r.email ? '' : 'disabled'}> `
+        + `<span>${r.enabled ? 'attivo' : 'spento'}</span></label>`
+        + (r.email ? '' : '<div style="font-size:.8em;color:#92400e">manca l’email del referente</div>');
+      const cb = cell.querySelector('input');
+      cb.dataset.email = r.email || '';
+      cb.addEventListener('change', () => toggleCustomerReport(r.name, cb));
+    });
+  } catch (e) { /* la colonna resta con i puntini: l'elenco dei clienti non ne risente */ }
+}
+
+async function toggleCustomerReport(name, cb) {
+  const wanted = cb.checked;
+  const label = cb.parentElement.querySelector('span');
+  if (wanted && !confirm(`Attivare il riepilogo settimanale per ${name}?\n\nIl referente (${cb.dataset.email}) `
+      + 'riceverà il riepilogo ogni settimana, quando la pianificazione sul server è attiva.')) {
+    cb.checked = false;
+    return;
+  }
+  cb.disabled = true;
+  try {
+    const res = await api(`/_authgate/dashboard/tenants/${encodeURIComponent(name)}/customer-report`,
+                          { method: 'POST', body: JSON.stringify({ enabled: wanted }) });
+    cb.checked = !!res.enabled;
+    label.textContent = res.enabled ? 'attivo' : 'spento';
+    showError('');
+  } catch (e) {
+    cb.checked = !wanted;
+    showError(e.message);
+  } finally {
+    cb.disabled = false;
+  }
 }
 
 async function loadTenantStorageSize(name) {

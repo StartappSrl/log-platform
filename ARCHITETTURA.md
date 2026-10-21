@@ -88,6 +88,7 @@ agent/              agent.py, agent_windows.py, inventory.py, local_archive.py, 
 gate/               login.html, nginx.conf.template
 scripts/            backup.sh, restore.sh, verifica_backup.sh, esito_notturno.py, check_disk_space.sh, seal-admin-logs.sh
 tests/              test di non-regressione (pytest, girano in CI)
+tests/integration/  controlli di integrazione check_*.py (mail, backup, flusso dei log): vedi "Test automatici"
 .github/workflows/  build-images.yml, build-windows-agent.yml, tests.yml
 ```
 `models.py` e `dashboard.py` sono cresciuti per accumulo (funzioni accodate in
@@ -138,6 +139,11 @@ ultimo controllo dispositivi offline, moduli in esecuzione, ultimo riavvio del n
 **anche quando va tutto bene**: se una mattina non arriva, il controllo (o il nodo) non gira.
 L'invio passa dal container `auth` (`python3 -m app.send_html_stdin`, SMTP di Impostazioni,
 destinatari del report notturno). `--dry-run` genera l'HTML in /tmp senza inviare.
+**Registro dei dispositivi noti** (`/var/lib/logplatform-esito/dispositivi.json`, solo sul nodo): la mail
+elenca i dispositivi già visti che ora non inviano da più di 24 ore (avviso fino a 3 giorni, poi problema).
+`esito_notturno.py --list` li mostra; `--forget NOME [--cliente C]` toglie un dispositivo dismesso.
+Si popola con i dispositivi visti dai controlli *veri* (il `--dry-run` non lo modifica); se lo perdi si
+ricostruisce in un giorno. È una seconda linea di difesa: la prima è l'avviso dei 20 minuti.
 Limite: se il nodo intero è spento non parte nulla, serve un controllo esterno (uptime monitor).
 
 ## Riepilogo settimanale ai clienti
@@ -145,8 +151,8 @@ Limite: se il nodo intero è spento non parte nulla, serve un controllo esterno 
 Mail HTML destinata al CLIENTE (non all'amministratore): stato dei suoi dispositivi, attività
 della settimana per giorno, aggiornamenti in sospeso. Codice: `customer_report.py` (raccolta e
 impaginazione) e `send_customer_reports.py` (comando, `python3 -m app.send_customer_reports`).
-- **Spento di default**: si attiva cliente per cliente (`tenants.weekly_report_enabled`), serve
-  l'email del referente nell'anagrafica.
+- **Spento di default**: si attiva cliente per cliente (`tenants.weekly_report_enabled`) con la casella nella
+  colonna "Riepilogo clienti" della scheda Clienti (chiede conferma; disabilitata se manca l'email del referente).
 - **Isolamento**: ogni interrogazione a Graylog porta `filter=streams:<stream del cliente>`
   (c'è un test che lo verifica); la mail non contiene mai dati di altri clienti né dettagli interni.
 - **Niente falsi allarmi nostri**: se Graylog non risponde per un cliente, quel cliente non riceve nulla.
@@ -156,6 +162,25 @@ impaginazione) e `send_customer_reports.py` (comando, `python3 -m app.send_custo
   quell'indirizzo con oggetto `[PROVA]`, mai ai clienti). `--include-disabled` senza `--to`/`--dry-run` è rifiutato.
 - Limite: l'elenco dispositivi si ricava dai messaggi più recenti (fino a 5000); con volumi molto alti
   un dispositivo muto da giorni potrebbe non comparire (la mail lo segnala).
+
+## Test automatici (girano in CI a ogni push su main e su ogni pull request)
+
+- `tests/test_*.py`: test unitari con pytest (gravità dei log, client Graylog, inventario).
+- `tests/integration/check_*.py`: controlli di integrazione, ciascuno uno script autonomo (il nome `check_`
+  è voluto: pytest non deve importarli). Usano un Graylog e un server SMTP simulati e una app finta costruita
+  al volo con i file VERI del repository:
+  `check_customer_report` (riepilogo ai clienti: isolamento fra clienti, nessuna mail a clienti non attivati,
+  niente mail se Graylog fallisce), `check_nightly_report` (report notturno e suo invio), `check_esito_*`
+  (mail di esito: raccoglitori, flusso dei log, registro dei dispositivi, invio), `check_verifica_backup`
+  (compreso il falso allarme SIGPIPE con volumi grandi).
+- Si lanciano a mano dalla radice del repository: `python3 tests/integration/check_esito_registry.py`
+  (servono flask, flask_sqlalchemy, requests, matplotlib). Falliscono con uscita diversa da zero.
+- Regola: se aggiungi o cambi una funzione che invia mail, tocca il backup o isola i dati dei clienti, aggiungi
+  o aggiorna il controllo corrispondente. Verificato con difetti iniettati apposta: il filtro dello stream tolto,
+  `--include-disabled` senza `--to`, il falso allarme SIGPIPE, l'HTML non neutralizzato, il registro che non
+  segnala più i dispositivi muti: ogni difetto fa fallire il controllo giusto.
+- Non coperto dai test: la resa delle mail nei client di posta, le rotte del pannello (`dashboard.py`) e il
+  giro vero con podman/NS8 sul nodo.
 
 ## Procedura di aggiornamento
 
