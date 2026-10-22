@@ -118,7 +118,7 @@ Da root, un `podman exec` semplice NON funziona (container rootless): serve il g
 
 ```
 0 3 * * *    cd /tmp && sudo -u logplatform-auth16 XDG_RUNTIME_DIR=/run/user/$(id -u logplatform-auth16) podman exec logplatform-auth python3 -m app.send_nightly_report >> /var/log/logplatform-report.log 2>&1
-*/20 * * * * cd /tmp && sudo -u logplatform-auth16 XDG_RUNTIME_DIR=/run/user/$(id -u logplatform-auth16) podman exec logplatform-auth python3 -m app.check_offline_devices >> /var/log/logplatform-offline-check.log 2>&1
+#SPENTO */20 * * * * cd /tmp && sudo -u logplatform-auth16 XDG_RUNTIME_DIR=/run/user/$(id -u logplatform-auth16) podman exec logplatform-auth python3 -m app.check_offline_devices >> /var/log/logplatform-offline-check.log 2>&1
 0 * * * *    /root/logmanager/final-package/scripts/check_disk_space.sh >> /var/log/logplatform-disk-check.log 2>&1
 30 2 * * *   /root/logmanager/final-package/scripts/backup.sh >> /var/log/logplatform-backup.log 2>&1
 30 6 * * *   /root/logmanager/final-package/scripts/verifica_backup.sh >> /var/log/logplatform-backup-verify.log 2>&1 || { cd /tmp && sudo -u logplatform-auth16 XDG_RUNTIME_DIR=/run/user/$(id -u logplatform-auth16) podman exec logplatform-auth python3 -m app.send_alert_email "Backup NON valido su $(hostname)" "verifica_backup.sh ha segnalato problemi: vedi /var/log/logplatform-backup-verify.log"; }
@@ -135,7 +135,7 @@ partirebbe sempre)
 Ogni mattina alle 06:45 `scripts/esito_notturno.py` (gira sul nodo) manda una mail HTML con
 l'esito di: flusso dei log (messaggi e dispositivi attivi nelle ultime 24 ore, rosso se zero),
 backup (verifica di integrità, età, dimensione), disco, ultimo report notturno,
-ultimo controllo dispositivi offline, moduli in esecuzione, ultimo riavvio del nodo. Parte
+ultimo controllo dispositivi offline (omesso se spento apposta), moduli in esecuzione, ultimo riavvio del nodo. Parte
 **anche quando va tutto bene**: se una mattina non arriva, il controllo (o il nodo) non gira.
 L'invio passa dal container `auth` (`python3 -m app.send_html_stdin`, SMTP di Impostazioni,
 destinatari del report notturno). `--dry-run` genera l'HTML in /tmp senza inviare.
@@ -143,8 +143,17 @@ destinatari del report notturno). `--dry-run` genera l'HTML in /tmp senza inviar
 elenca i dispositivi già visti che ora non inviano da più di 24 ore (avviso fino a 3 giorni, poi problema).
 `esito_notturno.py --list` li mostra; `--forget NOME [--cliente C]` toglie un dispositivo dismesso.
 Si popola con i dispositivi visti dai controlli *veri* (il `--dry-run` non lo modifica); se lo perdi si
-ricostruisce in un giorno. È una seconda linea di difesa: la prima è l'avviso dei 20 minuti.
+ricostruisce in un giorno. Con gli avvisi immediati spenti (vedi sotto) è, insieme al report notturno, l'unica segnalazione dei dispositivi muti.
 Limite: se il nodo intero è spento non parte nulla, serve un controllo esterno (uptime monitor).
+
+## Avvisi immediati dei dispositivi offline (spenti)
+
+Il controllo `check_offline_devices` (cron ogni 20 minuti) inviava una mail quando un dispositivo smetteva di inviare log e un'altra
+quando riprendeva. È **spento apposta**: la riga del cron è commentata con il prefisso `#SPENTO `. Resta il riepilogo giornaliero
+(mail di esito delle 06:45, con il registro dei dispositivi noti, e report notturno con «Nessun log oggi»). La mail di esito riconosce
+lo spegnimento voluto e omette la riga del controllo; se la riga sparisce o viene commentata a mano con un semplice `#`, continua a
+segnalarla. Il controllo `check_esito_avvisi_spenti` verifica tutto questo.
+Riaccendere: `crontab -l | sed 's|^#SPENTO \(.*check_offline_devices.*\)$|\1|' | crontab -`.
 
 ## Riepilogo settimanale ai clienti
 

@@ -13,7 +13,7 @@ Controlla:
   - backup: esito di verifica_backup.sh, eta', dimensione
   - disco del nodo
   - esito dell'ultimo report notturno (dal suo log)
-  - esito dell'ultimo controllo dispositivi offline (dal suo log)
+  - esito dell'ultimo controllo dispositivi offline (dal suo log; omesso se spento apposta)
   - moduli NS8 in esecuzione
   - ultimo riavvio del nodo
 
@@ -40,6 +40,8 @@ VERIFY_SCRIPT = os.environ.get(
     "VERIFY_SCRIPT", "/root/logmanager/final-package/scripts/verifica_backup.sh")
 REPORT_LOG = "/var/log/logplatform-report.log"
 OFFLINE_LOG = "/var/log/logplatform-offline-check.log"
+OFFLINE_JOB = "check_offline_devices"      # nome del job nel cron di root
+SPENTO_MARKER = "#SPENTO "                  # un job spento APPOSTA ha la riga commentata cosi' (vedi spegni/riaccendi nel pacchetto)
 MODULES = [
     ("mariadb", "logplatform-mariadb"), ("mongodb", "logplatform-mongodb"),
     ("opensearch", "logplatform-opensearch"), ("graylog", "logplatform-graylog"),
@@ -554,6 +556,22 @@ def safe(nome, fn, *args):
         return check(nome, "fail", [f"Controllo non eseguibile: {type(exc).__name__}: {exc}"])
 
 
+def job_spento_volutamente(run, job=OFFLINE_JOB):
+    """True se nel cron di root il job e' stato spento APPOSTA: riga commentata con '#SPENTO ' e nessuna riga attiva.
+    Una riga semplicemente sparita (o commentata a mano con un normale '#') NON conta: continua a essere segnalata,
+    perche' potrebbe essere un errore."""
+    try:
+        rc, out, _ = run(["crontab", "-l"])
+    except Exception:
+        return False
+    if rc != 0:
+        return False
+    righe = out.splitlines()
+    attiva = any(job in r and not r.lstrip().startswith("#") for r in righe)
+    spenta = any(r.startswith(SPENTO_MARKER) and job in r for r in righe)
+    return spenta and not attiva
+
+
 def gather(run, now, registry_path=None, persist=True):
     return [
         safe("Flusso dei log", collect_flow, run, now, "/home", registry_path, persist),
@@ -561,8 +579,9 @@ def gather(run, now, registry_path=None, persist=True):
         safe("Spazio disco", collect_disk, "/"),
         safe("Report notturno ai clienti", collect_log_job, "Report notturno ai clienti",
              REPORT_LOG, now, 26, "Report inviato a", "Ultimo invio riuscito"),
-        safe("Controllo dispositivi offline", collect_log_job, "Controllo dispositivi offline",
-             OFFLINE_LOG, now, 1, "Controllo dispositivi offline completato", "Ultimo controllo riuscito"),
+        *([] if job_spento_volutamente(run) else [      # se gli avvisi immediati sono spenti apposta, la riga non c'e'
+            safe("Controllo dispositivi offline", collect_log_job, "Controllo dispositivi offline",
+                 OFFLINE_LOG, now, 1, "Controllo dispositivi offline completato", "Ultimo controllo riuscito")]),
         safe("Moduli della piattaforma", collect_modules, run),
         safe("Nodo", lambda: collect_host(read_uptime())),
     ]
