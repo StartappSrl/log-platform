@@ -42,10 +42,26 @@ MODELS_WITH_FALLBACK = {
 
 
 def _load_tenant_webhooks() -> dict:
-    if not os.path.exists(TENANT_WEBHOOKS_PATH):
+    """Legge la mappa cliente -> URL del webhook. Non deve mai bloccare la risposta a Graylog:
+    se manca o e' illeggibile, l'allarme viene solo registrato nel log senza inoltro.
+
+    Su NethServer 8 il modulo monta un volume (cioe' una CARTELLA) su questo percorso: in quel
+    caso il file e' tenant_webhooks.json dentro la cartella."""
+    path = TENANT_WEBHOOKS_PATH
+    if os.path.isdir(path):
+        path = os.path.join(path, "tenant_webhooks.json")
+    if not os.path.isfile(path):
         return {}
-    with open(TENANT_WEBHOOKS_PATH) as f:
-        return json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        log.exception("Configurazione webhook dei clienti illeggibile: %s", path)
+        return {}
+    if not isinstance(data, dict):
+        log.error("Configurazione webhook dei clienti non valida (serve un oggetto JSON): %s", path)
+        return {}
+    return data
 
 
 def _extract_alert_summary(payload: dict) -> str:
