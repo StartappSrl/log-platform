@@ -21,11 +21,24 @@ log = logging.getLogger("ai-service")
 app = Flask(__name__)
 
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
-MODEL = os.environ.get("AI_SERVICE_MODEL", "claude-sonnet-4-6")
+MODEL = os.environ.get("AI_SERVICE_MODEL", "claude-opus-5-5")
 WEBHOOK_TOKEN = os.environ["AI_SERVICE_WEBHOOK_TOKEN"]
 TENANT_WEBHOOKS_PATH = os.environ.get("TENANT_WEBHOOKS_PATH", "/app/tenant_webhooks.json")
 
-client = Anthropic(api_key=ANTHROPIC_API_KEY)
+# Timeout sotto i 30 secondi del worker gunicorn: se Claude non risponde in tempo
+# il webhook risponde comunque (con "triage non disponibile") invece di far
+# uccidere il worker da gunicorn.
+client = Anthropic(api_key=ANTHROPIC_API_KEY, timeout=25.0, max_retries=1)
+
+# Modelli che accettano il ripiego automatico lato server: se il modello rifiuta
+# la richiesta per le sue regole di sicurezza (capita con log che contengono
+# comandi o payload d'attacco), l'API la ripete su un altro modello nella stessa
+# chiamata. Con un modello piu' vecchio impostato in AI_SERVICE_MODEL il
+# parametro non viene inviato.
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
+MODELS_WITH_FALLBACK = {
+    "claude-fable-5-2", "claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5",
+}
 
 
 def _load_tenant_webhooks() -> dict:
@@ -66,12 +79,22 @@ cliente '{tenant}' e rispondi in italiano, in modo conciso (max 8 righe), con:
 Dati dell'allarme:
 {summary}
 """
-    resp = client.messages.create(
+    extra = {}
+    if MODEL in MODELS_WITH_FALLBACK:
+        extra = {"betas": [FALLBACK_BETA], "fallbacks": "default"}
+    resp = client.beta.messages.create(
         model=MODEL,
-        max_tokens=500,
+        # Spazio anche per il ragionamento (sempre attivo sui modelli recenti):
+        # la lunghezza della risposta la fissa il prompt (max 8 righe).
+        max_tokens=16000,
+        # Sforzo basso: triage breve e veloce, Graylog aspetta la risposta.
+        output_config={"effort": "low"},
         messages=[{"role": "user", "content": prompt}],
+        **extra,
     )
-    return "".join(block.text for block in resp.content if block.type == "text")
+    if resp.stop_reason == "refusal":
+        return "(triage AI non disponibile: il modello ha rifiutato di analizzare questo allarme)"
+    return "".join(block.text for block in resp.content if block.type == "text").strip()
 
 
 @app.post("/webhook/<tenant>")
