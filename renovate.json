@@ -1,0 +1,50 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "description": "Log Platform: attesa di 14 giorni sulle nuove versioni (3 per le correzioni di sicurezza), nessun merge automatico, aggiornamenti major e di Python solo su approvazione dalla Dependency Dashboard.",
+  "minimumReleaseAge": "14 days",
+  "internalChecksFilter": "strict",
+  "automerge": false,
+  "labels": [
+    "dipendenze"
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "minimumReleaseAge": "3 days",
+    "labels": [
+      "sicurezza"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Aggiornamenti major: si propongono solo dopo l'approvazione nella Dependency Dashboard",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Versione di Python (immagini e CI, anche l'agente Windows): cambio da provare a parte, solo su approvazione",
+      "matchPackageNames": [
+        "python"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Azioni GitHub della CI in un'unica PR",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "azioni GitHub"
+    },
+    {
+      "description": "docker-compose.yml e' solo per lo sviluppo locale: in produzione Graylog, OpenSearch, MongoDB e MariaDB girano dai moduli NS8 con le loro versioni",
+      "matchManagers": [
+        "docker-compose"
+      ],
+      "enabled": false
+    }
+  ]
+}
