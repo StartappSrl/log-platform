@@ -1,4 +1,4 @@
-FROM nginx:1.27-alpine
+FROM nginx:1.29-alpine
 COPY nginx.conf.template /etc/nginx/nginx.conf.template
 COPY login.html /usr/share/nginx/html/login.html
 COPY startapp-logo.png /usr/share/nginx/html/startapp-logo.png
