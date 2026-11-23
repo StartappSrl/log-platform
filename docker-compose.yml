@@ -24,7 +24,7 @@ services:
       - mongo_data:/data/db
 
   opensearch:
-    image: opensearchproject/opensearch:2.15.0
+    image: opensearchproject/opensearch:2.19.7
     restart: unless-stopped
     environment:
       - "OPENSEARCH_JAVA_OPTS=${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}"
