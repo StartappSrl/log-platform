@@ -17,7 +17,7 @@ volumes:
 services:
 
   mongodb:
-    image: mongo:6.0
+    image: mongo:9.0
     restart: unless-stopped
     networks: [backend]
     volumes:
