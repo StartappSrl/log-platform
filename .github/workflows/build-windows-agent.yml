@@ -88,7 +88,7 @@ jobs:
           Compress-Archive -Path "dist\logplatform-agent\*" -DestinationPath "dist\logplatform-agent-windows.zip"
 
       - name: Carica come artefatto della build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: logplatform-agent-windows-${{ github.ref_name }}
           path: agent/dist/logplatform-agent-windows.zip
