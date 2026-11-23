@@ -38,7 +38,7 @@ services:
       - opensearch_data:/usr/share/opensearch/data
 
   graylog:
-    image: graylog/graylog:6.1
+    image: graylog/graylog:7.2
     restart: unless-stopped
     depends_on: [mongodb, opensearch]
     environment:
