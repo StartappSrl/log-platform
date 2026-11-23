@@ -8,5 +8,5 @@ itsdangerous==2.2.0
 requests==2.33.0
 gunicorn==22.0.0
 cryptography==50.0.2
-reportlab==4.4.0
+reportlab==4.5.1
 matplotlib
