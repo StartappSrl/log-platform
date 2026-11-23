@@ -32,6 +32,7 @@ jobs:
       - name: Controlli di integrazione (mail, backup, flusso dei log)
         run: |
           pip install flask flask_sqlalchemy requests matplotlib --break-system-packages
+          pip install -r ai-service/requirements.txt --break-system-packages
           for f in tests/integration/check_*.py; do
             echo "=== $f ==="
             python3 "$f" || exit 1
