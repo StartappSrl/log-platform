@@ -36,7 +36,7 @@ jobs:
         run: echo "repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Build e push immagine ${{ matrix.service }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./${{ matrix.service }}
           push: true
