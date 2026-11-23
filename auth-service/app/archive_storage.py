@@ -42,8 +42,21 @@ def _connect():
             PRIMARY KEY (tenant, hostname, source_id, day)
         )
     """)
+    # CREATE TABLE IF NOT EXISTS non aggiunge colonne a una tabella gia' esistente: un registro
+    # creato da una versione precedente va aggiornato qui, altrimenti ogni caricamento fallisce
+    # ("no column named ...") e i giorni arrivano su disco ma non compaiono nel portale.
+    present = {row[1] for row in conn.execute("PRAGMA table_info(uploaded_days)")}
+    for column, definition in _UPLOADED_DAYS_ADDED_COLUMNS:
+        if column not in present:
+            conn.execute(f"ALTER TABLE uploaded_days ADD COLUMN {column} {definition}")
     conn.commit()
     return conn
+
+
+# Colonne aggiunte a uploaded_days dopo la prima versione (nome, definizione per ALTER TABLE).
+_UPLOADED_DAYS_ADDED_COLUMNS = (
+    ("size_bytes", "INTEGER NOT NULL DEFAULT 0"),
+)
 
 
 def get_or_create_upload_token(tenant: str) -> str:
