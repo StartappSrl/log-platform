@@ -18,7 +18,7 @@ jobs:
       matrix:
         service: [auth-service, ai-service, gate]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Login a GitHub Container Registry
         uses: docker/login-action@v3
