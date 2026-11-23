@@ -95,7 +95,7 @@ jobs:
           retention-days: 90
 
       - name: Pubblica come Release (per il download dal pannello)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: agent/dist/logplatform-agent-windows.zip
