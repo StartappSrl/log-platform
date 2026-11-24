@@ -61,6 +61,7 @@ import win32serviceutil
 from gelf_transport import build_gelf_message, send_with_reconnect
 from local_archive import LocalArchiver
 from inventory import build_inventory_gelf_message
+import auto_update
 
 # Quando l'agent gira come .exe (PyInstaller), __file__ punta a una
 # cartella temporanea di estrazione, NON alla cartella dove si trova
@@ -265,6 +266,7 @@ def load_config(config_path: Path):
         "local_archive_upload_token": s.get("local_archive_upload_token", "").strip() or None,
         "inventory_interval_hours": s.getfloat("inventory_interval_hours", 24),
         "block_usb_storage": s.getboolean("block_usb_storage", fallback=False),
+        "auto_update": s.getboolean("auto_update", fallback=True),
     }
 
 
@@ -337,6 +339,16 @@ def run_agent(stop_flag: dict):
         threads.append(threading.Thread(
             target=usb_block_loop,
             args=(stop_flag,),
+            daemon=True))
+
+    if config["auto_update"]:
+        # Aggiornamento automatico (vedi auto_update.py): parte solo se nel pannello
+        # è acceso per questo cliente, e installa solo pacchetti firmati.
+        threads.append(threading.Thread(
+            target=auto_update.update_loop,
+            args=("windows", config["tenant"], config["local_archive_upload_url"],
+                  config["local_archive_upload_token"], SCRIPT_DIR,
+                  lambda: stop_flag["stop"], lambda: None),
             daemon=True))
 
     for t in threads:

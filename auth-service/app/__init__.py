@@ -25,6 +25,8 @@ def create_app() -> Flask:
     app.register_blueprint(dash)
     from .archive_upload_routes import archive_upload_bp
     app.register_blueprint(archive_upload_bp)
+    from .agent_update_routes import agent_update_bp
+    app.register_blueprint(agent_update_bp)
 
     from .setup_routes import setup_bp
     app.register_blueprint(setup_bp)

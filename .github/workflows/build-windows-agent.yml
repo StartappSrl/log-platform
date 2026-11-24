@@ -24,7 +24,10 @@ jobs:
 
       - name: Installa le dipendenze
         run: |
-          pip install pywin32 pyinstaller
+          pip install pywin32 pyinstaller cryptography==50.0.2
+
+      - name: Scrivi il numero di versione nell'agent
+        run: python scripts/rilascio_agent.py versione "${{ github.ref_name }}"
 
       - name: Build eseguibile
         working-directory: agent
@@ -87,6 +90,17 @@ jobs:
           Get-ChildItem "dist\logplatform-agent" | Select-Object Name, Length
           Compress-Archive -Path "dist\logplatform-agent\*" -DestinationPath "dist\logplatform-agent-windows.zip"
 
+      - name: Pacchetto Linux e firma dei pacchetti (aggiornamento automatico)
+        env:
+          AGENT_SIGNING_KEY: ${{ secrets.AGENT_SIGNING_KEY }}
+        run: |
+          python scripts/rilascio_agent.py linux "${{ github.ref_name }}" agent/dist/logplatform-agent-linux.tar.gz
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python scripts/rilascio_agent.py firma agent/dist/logplatform-agent-windows.zip windows "${{ github.ref_name }}"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python scripts/rilascio_agent.py firma agent/dist/logplatform-agent-linux.tar.gz linux "${{ github.ref_name }}"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
       - name: Carica come artefatto della build
         uses: actions/upload-artifact@v4
         with:
@@ -98,7 +112,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: agent/dist/logplatform-agent-windows.zip
+          files: |
+            agent/dist/logplatform-agent-windows.zip
+            agent/dist/logplatform-agent-windows.zip.manifest.json
+            agent/dist/logplatform-agent-windows.zip.sig
+            agent/dist/logplatform-agent-linux.tar.gz
+            agent/dist/logplatform-agent-linux.tar.gz.manifest.json
+            agent/dist/logplatform-agent-linux.tar.gz.sig
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

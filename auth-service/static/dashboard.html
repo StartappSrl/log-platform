@@ -151,7 +151,7 @@
       </div>
     </div>
     <table id="tenants-table">
-      <thead><tr><th>Identificativo</th><th>Nome</th><th>Ragione sociale</th><th>P.IVA/CF</th><th>Referente</th><th>Email</th><th>Stream Graylog</th><th>Spazio</th><th>Riepilogo clienti</th><th>Agent</th></tr></thead>
+      <thead><tr><th>Identificativo</th><th>Nome</th><th>Ragione sociale</th><th>P.IVA/CF</th><th>Referente</th><th>Email</th><th>Stream Graylog</th><th>Spazio</th><th>Riepilogo clienti</th><th>Aggiornamento agent</th><th>Agent</th></tr></thead>
       <tbody></tbody>
     </table>
     <div class="empty" id="tenants-empty" style="display:none">Nessun cliente ancora. Creane uno sopra.</div>
@@ -531,12 +531,54 @@ async function loadTenants() {
     document.getElementById('tenants-empty').style.display = tenants.length ? 'none' : 'block';
     tenants.forEach(t => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td id="storage-${t.name}">...</td><td id="crep-${t.name}">...</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a> | <a href="#" onclick="editTenant('${t.name}');return false;">Modifica</a> | <a href="#" onclick="deleteTenant('${t.name}');return false;" style="color:#dc2626">Elimina</a></td>`;
+      tr.innerHTML = `<td>${t.name}</td><td>${t.display_name || ''}</td><td>${t.ragione_sociale || ''}</td><td>${t.partita_iva || ''}</td><td>${t.referente || ''}</td><td>${t.email || ''}</td><td>${t.stream_id || ''}</td><td id="storage-${t.name}">...</td><td id="crep-${t.name}">...</td><td id="agupd-${t.name}">...</td><td><a href="/_authgate/dashboard/tenants/${t.name}/agent-package">Linux/config</a> | <a href="/_authgate/dashboard/tenants/${t.name}/agent-package-windows">Windows .exe</a> | <a href="#" onclick="editTenant('${t.name}');return false;">Modifica</a> | <a href="#" onclick="deleteTenant('${t.name}');return false;" style="color:#dc2626">Elimina</a></td>`;
       tbody.appendChild(tr);
       loadTenantStorageSize(t.name);
     });
     loadCustomerReportSettings();
+    loadAgentAutoUpdate();
   } catch (e) { showError(e.message); }
+}
+
+async function loadAgentAutoUpdate() {
+  try {
+    const rows = await api('/_authgate/dashboard/agent-auto-update');
+    rows.forEach(r => {
+      const cell = document.getElementById(`agupd-${r.name}`);
+      if (!cell) return;
+      cell.innerHTML = '<label style="font-weight:normal;font-size:.9em;white-space:nowrap">'
+        + `<input type="checkbox" ${r.enabled ? 'checked' : ''}> `
+        + `<span>${r.enabled ? 'automatico' : 'manuale'}</span></label>`;
+      const cb = cell.querySelector('input');
+      cb.addEventListener('change', () => toggleAgentAutoUpdate(r.name, cb));
+    });
+  } catch (e) { /* la colonna resta con i puntini: l'elenco dei clienti non ne risente */ }
+}
+
+async function toggleAgentAutoUpdate(name, cb) {
+  const wanted = cb.checked;
+  const label = cb.parentElement.querySelector('span');
+  if (wanted && !confirm(`Attivare l'aggiornamento automatico degli agent di ${name}?
+
+`
+      + 'I PC del cliente installeranno da soli le nuove versioni firmate, entro qualche ora '
+      + 'dal rilascio. Vale per gli agent installati da questa versione in poi.')) {
+    cb.checked = false;
+    return;
+  }
+  cb.disabled = true;
+  try {
+    const res = await api(`/_authgate/dashboard/tenants/${encodeURIComponent(name)}/agent-auto-update`,
+                          { method: 'POST', body: JSON.stringify({ enabled: wanted }) });
+    cb.checked = !!res.enabled;
+    label.textContent = res.enabled ? 'automatico' : 'manuale';
+    showError('');
+  } catch (e) {
+    cb.checked = !wanted;
+    showError(e.message);
+  } finally {
+    cb.disabled = false;
+  }
 }
 
 async function loadCustomerReportSettings() {

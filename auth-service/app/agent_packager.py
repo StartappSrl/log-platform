@@ -98,7 +98,9 @@ def build_agent_package(tenant: str) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         for name in ("agent.py", "agent_windows.py", "gelf_transport.py", "local_archive.py",
-                     "inventory.py", "requirements-windows.txt", "logplatform-agent.service.example"):
+                     "inventory.py", "syslog_relay.py", "syslog_parser.py", "auto_update.py",
+                     "ed25519_verify.py", "agent_version.py",
+                     "requirements-windows.txt", "logplatform-agent.service.example"):
             src = AGENT_TEMPLATES_DIR / name
             if src.exists():
                 tar.add(src, arcname=f"agent-{tenant}/{name}")

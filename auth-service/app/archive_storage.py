@@ -6,6 +6,7 @@ solo sul PC del cliente, una copia arriva e resta sul portale.
 Persistenza: ARCHIVE_DIR (default /data/archives) deve essere un volume
 che sopravvive ai riavvii del container, come CA_DIR.
 """
+import hmac
 import os
 import secrets
 import sqlite3
@@ -45,6 +46,13 @@ def _connect():
     # CREATE TABLE IF NOT EXISTS non aggiunge colonne a una tabella gia' esistente: un registro
     # creato da una versione precedente va aggiornato qui, altrimenti ogni caricamento fallisce
     # ("no column named ...") e i giorni arrivano su disco ma non compaiono nel portale.
+    # Aggiornamento automatico dell'agent, acceso/spento per cliente dal pannello (vedi agent_update_routes.py)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS agent_auto_update (
+            tenant TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 0
+        )
+    """)
     present = {row[1] for row in conn.execute("PRAGMA table_info(uploaded_days)")}
     for column, definition in _UPLOADED_DAYS_ADDED_COLUMNS:
         if column not in present:
@@ -75,7 +83,25 @@ def verify_upload_token(tenant: str, token: str) -> bool:
         return False
     with closing(_connect()) as conn:
         row = conn.execute("SELECT token FROM tenant_tokens WHERE tenant = ?", (tenant,)).fetchone()
-        return bool(row) and row[0] == token
+        return bool(row) and hmac.compare_digest(row[0].encode(), token.encode())
+
+
+def agent_auto_update_enabled(tenant: str) -> bool:
+    with closing(_connect()) as conn:
+        row = conn.execute("SELECT enabled FROM agent_auto_update WHERE tenant = ?", (tenant,)).fetchone()
+        return bool(row and row[0])
+
+
+def set_agent_auto_update(tenant: str, enabled: bool) -> None:
+    with closing(_connect()) as conn:
+        conn.execute("INSERT INTO agent_auto_update (tenant, enabled) VALUES (?, ?) "
+                     "ON CONFLICT(tenant) DO UPDATE SET enabled = excluded.enabled", (tenant, int(enabled)))
+        conn.commit()
+
+
+def agent_auto_update_tenants() -> set:
+    with closing(_connect()) as conn:
+        return {r[0] for r in conn.execute("SELECT tenant FROM agent_auto_update WHERE enabled = 1")}
 
 
 def _host_dir(tenant: str, hostname: str, source_id: str) -> Path:
