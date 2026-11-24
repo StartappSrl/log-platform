@@ -874,6 +874,29 @@ def list_customer_reports_route():
                      "enabled": bool(t.weekly_report_enabled)} for t in rows])
 
 
+@dash.get("/agent-auto-update")
+@admin_required
+def list_agent_auto_update_route():
+    from . import archive_storage
+    enabled = archive_storage.agent_auto_update_tenants()
+    return jsonify([{"name": t.name, "enabled": t.name in enabled}
+                    for t in Tenant.query.order_by(Tenant.name).all()])
+
+
+@dash.post("/tenants/<name>/agent-auto-update")
+@admin_required
+@csrf_protect
+def set_agent_auto_update_route(name):
+    from . import archive_storage
+    if not Tenant.query.filter_by(name=name).first():
+        return jsonify(error="cliente non trovato"), 404
+    enabled = bool((request.get_json(force=True, silent=True) or {}).get("enabled"))
+    archive_storage.set_agent_auto_update(name, enabled)
+    record_audit("aggiornamento_agent_attivato" if enabled else "aggiornamento_agent_disattivato",
+                 f"cliente={name}")
+    return jsonify(ok=True, enabled=enabled)
+
+
 @dash.post("/tenants/<name>/customer-report")
 @admin_required
 @csrf_protect

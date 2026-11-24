@@ -35,6 +35,7 @@ Per Windows, usa agent_windows.py invece di questo script.
 """
 import argparse
 import configparser
+import os
 import signal
 import socket
 import sys
@@ -45,6 +46,7 @@ from pathlib import Path
 from gelf_transport import build_gelf_message, send_with_reconnect
 from local_archive import LocalArchiver
 from inventory import build_inventory_gelf_message
+import auto_update
 
 _shutdown = threading.Event()
 
@@ -139,6 +141,7 @@ def main():
     log_files = [p.strip() for p in s.get("log_files", "").split(",") if p.strip()]
     admin_log_files = [p.strip() for p in s.get("admin_log_files", "").split(",") if p.strip()]
     inventory_interval_hours = s.getfloat("inventory_interval_hours", 24)
+    auto_update_enabled = s.getboolean("auto_update", fallback=True)
 
     if not log_files and not admin_log_files:
         raise SystemExit("Configura almeno un file in 'log_files' o 'admin_log_files' nell'agent.ini")
@@ -208,6 +211,17 @@ def main():
             target=inventory_loop, args=(tenant, hostname, connect_args, sock_holder, inventory_interval_hours),
             daemon=True))
         print(f"Invio inventario attivo, ogni {inventory_interval_hours} ore")
+
+    if auto_update_enabled:
+        # Aggiornamento automatico (vedi auto_update.py): parte solo se nel pannello
+        # è acceso per questo cliente, e installa solo pacchetti firmati.
+        threading.Thread(
+            target=auto_update.update_loop,
+            args=("linux", tenant, s.get("local_archive_upload_url", "").strip() or None,
+                  s.get("local_archive_upload_token", "").strip() or None,
+                  Path(__file__).resolve().parent, _shutdown.is_set,
+                  lambda: os.kill(os.getpid(), signal.SIGTERM)),
+            daemon=True).start()
 
     for t in threads:
         t.start()

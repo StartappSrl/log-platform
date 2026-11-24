@@ -7,6 +7,8 @@ import socket
 import ssl
 import time
 
+from agent_version import AGENT_VERSION
+
 
 def build_gelf_message(tenant: str, host: str, short_message: str, full_message: str = "",
                         level: int = 6, extra: dict | None = None) -> bytes:
@@ -18,6 +20,7 @@ def build_gelf_message(tenant: str, host: str, short_message: str, full_message:
         "timestamp": time.time(),
         "level": level,
         "_tenant": tenant,
+        "_agent_version": AGENT_VERSION,  # per vedere in Graylog quali PC sono aggiornati
     }
     if extra:
         for k, v in extra.items():
