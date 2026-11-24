@@ -58,7 +58,7 @@ import win32evtlog
 import win32service
 import win32serviceutil
 
-from gelf_transport import build_gelf_message, connect
+from gelf_transport import build_gelf_message, send_with_reconnect
 from local_archive import LocalArchiver
 from inventory import build_inventory_gelf_message
 
@@ -127,15 +127,8 @@ def follow_file(path_str: str, tenant: str, hostname: str, connect_args: tuple,
         if archiver:
             archiver.write_line(line)
         payload = build_gelf_message(tenant, hostname, line, extra=extra_base)
-        while True:
-            try:
-                sock_holder["sock"].sendall(payload)
-                break
-            except (BrokenPipeError, OSError):
-                if stop_flag["stop"]:
-                    return
-                time.sleep(2)
-                sock_holder["sock"] = connect(*connect_args)
+        if not send_with_reconnect(sock_holder, payload, connect_args, lambda: stop_flag["stop"]):
+            return
 
 
 def follow_event_log(channel: str, tenant: str, hostname: str, connect_args: tuple,
@@ -190,15 +183,9 @@ def follow_event_log(channel: str, tenant: str, hostname: str, connect_args: tup
                     level=level_map.get(ev.EventType, 6),
                     extra=extra,
                 )
-                while True:
-                    try:
-                        sock_holder["sock"].sendall(payload)
-                        break
-                    except (BrokenPipeError, OSError):
-                        if stop_flag["stop"]:
-                            return
-                        time.sleep(2)
-                        sock_holder["sock"] = connect(*connect_args)
+                if not send_with_reconnect(sock_holder, payload, connect_args,
+                                           lambda: stop_flag["stop"]):
+                    return
 
                 last_seen = max(last_seen, ev.RecordNumber)
 
@@ -222,15 +209,8 @@ def inventory_loop(tenant: str, hostname: str, connect_args: tuple, sock_holder:
     while not stop_flag["stop"]:
         try:
             payload = build_inventory_gelf_message(tenant, hostname, build_gelf_message)
-            while True:
-                try:
-                    sock_holder["sock"].sendall(payload)
-                    break
-                except (BrokenPipeError, OSError):
-                    if stop_flag["stop"]:
-                        return
-                    time.sleep(2)
-                    sock_holder["sock"] = connect(*connect_args)
+            if not send_with_reconnect(sock_holder, payload, connect_args, lambda: stop_flag["stop"]):
+                return
         except Exception:
             pass  # riprova al giro successivo
 
@@ -307,7 +287,9 @@ def run_agent(stop_flag: dict):
     config = load_config(SCRIPT_DIR / "agent.ini")
     connect_args = (config["graylog_host"], config["graylog_port"],
                      config["ca_cert"], config["client_cert"], config["client_key"])
-    sock_holder = {"sock": connect(*connect_args)}
+    # La prima connessione la apre send_with_reconnect al primo invio: se Graylog
+    # non risponde all'avvio l'agent resta in piedi e riprova da solo.
+    sock_holder = {"sock": None, "connect_args": connect_args}
     state = _load_state()
 
     archivers = []
