@@ -7,8 +7,8 @@ parla solo con questo relay sulla rete locale.
 """
 import socket
 import threading
-import time
 
+from gelf_transport import send_with_reconnect
 from syslog_parser import parse_syslog_message
 
 _shutdown = threading.Event()
@@ -28,14 +28,7 @@ def _forward(tenant: str, relay_hostname: str, raw_message: str, source_ip: str,
 
     payload = build_gelf_message_fn(tenant, device_hostname, parsed["message"],
                                       level=parsed["level"], extra=extra)
-    while True:
-        try:
-            sock_holder["sock"].sendall(payload)
-            return
-        except (BrokenPipeError, OSError):
-            if _shutdown.is_set():
-                return
-            time.sleep(2)
+    send_with_reconnect(sock_holder, payload, sock_holder["connect_args"], _shutdown.is_set)
 
 
 def _udp_listener(bind_host: str, port: int, tenant: str, relay_hostname: str,

@@ -42,7 +42,7 @@ import threading
 import time
 from pathlib import Path
 
-from gelf_transport import build_gelf_message, connect
+from gelf_transport import build_gelf_message, send_with_reconnect
 from local_archive import LocalArchiver
 from inventory import build_inventory_gelf_message
 
@@ -94,15 +94,8 @@ def follow(path_str: str, tenant: str, hostname: str, connect_args: tuple, sock_
             archiver.write_line(line)
         level = _guess_level_from_text(line)
         payload = build_gelf_message(tenant, hostname, line, level=level, extra=extra)
-        while True:
-            try:
-                sock_holder["sock"].sendall(payload)
-                break
-            except (BrokenPipeError, OSError):
-                if _shutdown.is_set():
-                    return
-                time.sleep(2)
-                sock_holder["sock"] = connect(*connect_args)
+        if not send_with_reconnect(sock_holder, payload, connect_args, _shutdown.is_set):
+            return
 
 
 def inventory_loop(tenant: str, hostname: str, connect_args: tuple, sock_holder: dict,
@@ -112,15 +105,8 @@ def inventory_loop(tenant: str, hostname: str, connect_args: tuple, sock_holder:
     while not _shutdown.is_set():
         try:
             payload = build_inventory_gelf_message(tenant, hostname, build_gelf_message)
-            while True:
-                try:
-                    sock_holder["sock"].sendall(payload)
-                    break
-                except (BrokenPipeError, OSError):
-                    if _shutdown.is_set():
-                        return
-                    time.sleep(2)
-                    sock_holder["sock"] = connect(*connect_args)
+            if not send_with_reconnect(sock_holder, payload, connect_args, _shutdown.is_set):
+                return
             print(f"Inventario inviato ({len(payload)} byte)")
         except Exception as e:
             print(f"Errore raccolta/invio inventario: {e}", file=sys.stderr)
@@ -181,7 +167,9 @@ def main():
               f"upload al portale {'attivo' if upload_url else 'non configurato'})")
 
     connect_args = (graylog_host, graylog_port, ca_cert, client_cert, client_key)
-    sock_holder = {"sock": connect(*connect_args)}
+    # La prima connessione la apre send_with_reconnect al primo invio: se Graylog
+    # non risponde all'avvio l'agent resta in piedi e riprova da solo.
+    sock_holder = {"sock": None, "connect_args": connect_args}
 
     def handle_signal(signum, frame):
         print("Arresto in corso, sigillo gli archivi locali del giorno in corso...")

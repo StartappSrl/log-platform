@@ -162,7 +162,7 @@ def create_alert(title: str, stream_id: str, query: str, threshold: int,
             "streams": [stream_id],
             "group_by": [],
             "series": [
-                {"id": series_id, "function": "count", "field": None}
+                {"id": series_id, "type": "count"}
             ],
             "conditions": {
                 "expression": {
