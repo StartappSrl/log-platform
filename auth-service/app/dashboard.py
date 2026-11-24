@@ -301,6 +301,28 @@ def download_agent_package_windows(tenant_name):
         as_attachment=True,
         download_name=f"agent-{tenant_name}-windows.zip",
     )
+@dash.get("/tenants/<tenant_name>/agent-installer-windows")
+@login_required
+def download_agent_installer_windows(tenant_name):
+    """Installatore unico (.exe) con configurazione e certificati del cliente."""
+    t = _tenant_or_403(tenant_name)
+    if not t:
+        return jsonify(error="tenant non trovato o non autorizzato"), 403
+    try:
+        exe_bytes = agent_packager.build_agent_installer_windows(tenant_name)
+    except github_release.GitHubReleaseError as e:
+        return jsonify(error=f"errore nel recupero dell'installatore da GitHub: {e}"), 502
+    except Exception as e:
+        return jsonify(error=f"errore nella generazione dell'installatore: {e}"), 500
+    record_audit("scarica_installatore_agent", f"cliente={tenant_name}")
+    return send_file(
+        io.BytesIO(exe_bytes),
+        mimetype="application/vnd.microsoft.portable-executable",
+        as_attachment=True,
+        download_name=f"logplatform-agent-setup-{tenant_name}.exe",
+    )
+
+
 # --- Da aggiungere a app/dashboard.py (in fondo al file) ---
 
 from . import inventory_pdf

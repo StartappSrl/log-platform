@@ -13,6 +13,7 @@ Due varianti:
 """
 import io
 import os
+import struct
 import tarfile
 import zipfile
 from pathlib import Path
@@ -147,3 +148,34 @@ def build_agent_package_windows_exe(tenant: str) -> bytes:
         out_zip.writestr(f"{root}/{tenant}-key.pem", client_key_pem)
 
     return out_buf.getvalue()
+
+
+# Configurazione in coda all'installatore unico: stesso formato letto da
+# agent/installer_logic.py (read_tenant_payload). Controllato da
+# tests/integration/check_installatore_unico.py.
+PAYLOAD_MAGIC = b"LPAGCFG1"
+
+
+def _tenant_payload(files: dict) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in files.items():
+            z.writestr(name, data if isinstance(data, bytes) else data.encode("utf-8"))
+    blob = buf.getvalue()
+    return blob + struct.pack("<Q", len(blob)) + PAYLOAD_MAGIC
+
+
+def build_agent_installer_windows(tenant: str, setup_exe: bytes | None = None) -> bytes:
+    """Installatore unico per QUESTO cliente: l'exe generico della Release con in coda
+    agent.ini, CA, certificato e chiave del cliente. Un solo file da lanciare."""
+    if setup_exe is None:
+        setup_exe = github_release.get_windows_setup_exe_bytes()
+    if setup_exe.endswith(PAYLOAD_MAGIC):
+        raise ValueError("l'installatore della Release contiene già una configurazione")
+    client_cert_pem, client_key_pem = cert_ledger.issue_and_record_certificate(tenant, is_server=False)
+    return setup_exe + _tenant_payload({
+        "agent.ini": _agent_ini_content_windows(tenant),
+        "ca.pem": ca_manager.get_ca_cert_pem(),
+        f"{tenant}.pem": client_cert_pem,
+        f"{tenant}-key.pem": client_key_pem,
+    })

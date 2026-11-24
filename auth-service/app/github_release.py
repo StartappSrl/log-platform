@@ -20,6 +20,7 @@ import requests
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")  # es. "StartappSrl/log-platform"
 ZIP_ASSET_NAME = "logplatform-agent-windows.zip"
+SETUP_ASSET_NAME = "logplatform-agent-setup.exe"
 RELEASE_CACHE_SECONDS = 600
 
 _HDRS = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {GITHUB_TOKEN}"}
@@ -84,3 +85,15 @@ def get_windows_release_zip_bytes() -> bytes:
             "La build Windows potrebbe non essere ancora stata pubblicata per questa versione."
         )
     return download_asset(asset)
+
+
+def get_windows_setup_exe_bytes() -> bytes:
+    """Ultimo logplatform-agent-setup.exe (installatore unico, uguale per tutti i clienti)."""
+    release = latest_release(max_age=0)
+    asset = find_asset(release, SETUP_ASSET_NAME)
+    if not asset:
+        raise GitHubReleaseError(
+            f"Nessun '{SETUP_ASSET_NAME}' nell'ultima release '{release.get('tag_name')}': "
+            "l'installatore unico esiste dalle versioni successive alla 0.17.13."
+        )
+    return download_asset(asset, timeout=120)
