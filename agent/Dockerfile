@@ -1,7 +1,7 @@
 # Containerizza l'agent Linux (agent.py) per l'esecuzione su NAS che
 # supportano Docker: Synology (Container Manager, DSM 7+) e QNAP
 # (Container Station). Funziona anche su qualunque altro host Docker.
-FROM python:3.12-alpine
+FROM python:3.15-alpine
 
 WORKDIR /app
 COPY agent.py gelf_transport.py ./
